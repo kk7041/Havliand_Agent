@@ -1,0 +1,45 @@
+{
+	"name": "@havliand_agent/orchestrator",
+	"version": "0.80.7",
+	"description": "Experimental orchestrator package for havliand_agent",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"keywords": [
+		"havliand_agent",
+		"orchestrator"
+	],
+	"author": "kk7041",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/kk7041/havliand_agent.git",
+		"directory": "packages/orchestrator"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"dependencies": {
+		"@havliand_agent/coding-agent": "^0.80.7"
+	},
+	"devDependencies": {
+		"shx": "0.4.0"
+	}
+}

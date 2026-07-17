@@ -1,0 +1,41 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+*.tsbuildinfo
+# packages/*/node_modules/
+packages/*/dist/
+packages/*/dist-chrome/
+packages/*/dist-firefox/
+*.cpuprofile
+
+# Environment
+.env
+
+# Editor files
+.vscode/
+.zed/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# Package specific
+.npm/
+coverage/
+.nyc_output/
+.havliand_agent_config/
+tui-debug.log
+compaction-results/
+.opencode/
+syntax.jsonl
+out.jsonl
+havliand_agent-*.html
+out.html
+packages/coding-agent/binaries/
+todo.md
+plans/
+.havliand_agent/hf-sessions/
+.havliand_agent/hf-sessions-backup/
+collect.sh
