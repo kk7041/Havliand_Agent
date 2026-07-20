@@ -180,7 +180,10 @@ function getFinalOutput(messages: Message[]): string {
 }
 
 function isFailedResult(result: SingleResult): boolean {
-	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+	return (
+		result.exitCode !== -1 &&
+		(result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted")
+	);
 }
 
 function getResultOutput(result: SingleResult): string {
@@ -302,7 +305,7 @@ async function runSingleAgent(
 		agent: agentName,
 		agentSource: agent.source,
 		task,
-		exitCode: 0,
+		exitCode: -1,
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
@@ -337,7 +340,18 @@ async function runSingleAgent(
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
+			emitUpdate();
 			let buffer = "";
+			let streamingAssistantIndex: number | undefined;
+
+			const upsertStreamingAssistant = (message: Message) => {
+				if (streamingAssistantIndex === undefined) {
+					streamingAssistantIndex = currentResult.messages.length;
+					currentResult.messages.push(message);
+					return;
+				}
+				currentResult.messages[streamingAssistantIndex] = message;
+			};
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
@@ -348,9 +362,24 @@ async function runSingleAgent(
 					return;
 				}
 
+				if (event.type === "message_start" && event.message?.role === "assistant") {
+					upsertStreamingAssistant(event.message as Message);
+					emitUpdate();
+				}
+
+				if (event.type === "message_update" && event.message?.role === "assistant") {
+					upsertStreamingAssistant(event.message as Message);
+					emitUpdate();
+				}
+
 				if (event.type === "message_end" && event.message) {
 					const msg = event.message as Message;
-					currentResult.messages.push(msg);
+					if (msg.role === "assistant" && streamingAssistantIndex !== undefined) {
+						currentResult.messages[streamingAssistantIndex] = msg;
+						streamingAssistantIndex = undefined;
+					} else {
+						currentResult.messages.push(msg);
+					}
 
 					if (msg.role === "assistant") {
 						currentResult.usage.turns++;
@@ -367,6 +396,21 @@ async function runSingleAgent(
 						if (msg.stopReason) currentResult.stopReason = msg.stopReason;
 						if (msg.errorMessage) currentResult.errorMessage = msg.errorMessage;
 					}
+					emitUpdate();
+				}
+
+				if (event.type === "tool_execution_start") {
+					currentResult.messages.push({
+						role: "assistant",
+						content: [
+							{
+								type: "toolCall",
+								id: event.toolCallId,
+								name: event.toolName,
+								arguments: event.args ?? {},
+							},
+						],
+					} as Message);
 					emitUpdate();
 				}
 
@@ -768,15 +812,21 @@ export default function (havliand_agent: ExtensionAPI) {
 
 			if (details.mode === "single" && details.results.length === 1) {
 				const r = details.results[0];
+				const isRunning = r.exitCode === -1;
 				const isError = isFailedResult(r);
-				const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+				const icon = isRunning
+					? theme.fg("warning", "⏳")
+					: isError
+						? theme.fg("error", "✗")
+						: theme.fg("success", "✓");
 				const displayItems = getDisplayItems(r.messages);
 				const finalOutput = getFinalOutput(r.messages);
 
 				if (expanded) {
 					const container = new Container();
 					let header = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
-					if (isError && r.stopReason) header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
+					if (isRunning) header += ` ${theme.fg("warning", "[running]")}`;
+					else if (isError && r.stopReason) header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 					container.addChild(new Text(header, 0, 0));
 					if (isError && r.errorMessage)
 						container.addChild(new Text(theme.fg("error", `Error: ${r.errorMessage}`), 0, 0));
@@ -786,7 +836,7 @@ export default function (havliand_agent: ExtensionAPI) {
 					container.addChild(new Spacer(1));
 					container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
 					if (displayItems.length === 0 && !finalOutput) {
-						container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
+						container.addChild(new Text(theme.fg("muted", isRunning ? "(running...)" : "(no output)"), 0, 0));
 					} else {
 						for (const item of displayItems) {
 							if (item.type === "toolCall")
@@ -812,9 +862,11 @@ export default function (havliand_agent: ExtensionAPI) {
 				}
 
 				let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
-				if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
+				if (isRunning) text += ` ${theme.fg("warning", "[running]")}`;
+				else if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
-				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
+				else if (displayItems.length === 0)
+					text += `\n${theme.fg("muted", isRunning ? "(running...)" : "(no output)")}`;
 				else {
 					text += `\n${renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT)}`;
 					if (displayItems.length > COLLAPSED_ITEM_COUNT) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
@@ -838,24 +890,31 @@ export default function (havliand_agent: ExtensionAPI) {
 			};
 
 			if (details.mode === "chain") {
+				const running = details.results.filter((r) => r.exitCode === -1).length;
 				const successCount = details.results.filter((r) => r.exitCode === 0).length;
-				const icon = successCount === details.results.length ? theme.fg("success", "✓") : theme.fg("error", "✗");
+				const isRunning = running > 0;
+				const icon = isRunning
+					? theme.fg("warning", "⏳")
+					: successCount === details.results.length
+						? theme.fg("success", "✓")
+						: theme.fg("error", "✗");
+				const status = isRunning
+					? `${successCount}/${details.results.length} steps, ${running} running`
+					: `${successCount}/${details.results.length} steps`;
 
 				if (expanded) {
 					const container = new Container();
 					container.addChild(
-						new Text(
-							icon +
-								" " +
-								theme.fg("toolTitle", theme.bold("chain ")) +
-								theme.fg("accent", `${successCount}/${details.results.length} steps`),
-							0,
-							0,
-						),
+						new Text(icon + " " + theme.fg("toolTitle", theme.bold("chain ")) + theme.fg("accent", status), 0, 0),
 					);
 
 					for (const r of details.results) {
-						const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
+						const rIcon =
+							r.exitCode === -1
+								? theme.fg("warning", "⏳")
+								: r.exitCode === 0
+									? theme.fg("success", "✓")
+									: theme.fg("error", "✗");
 						const displayItems = getDisplayItems(r.messages);
 						const finalOutput = getFinalOutput(r.messages);
 
@@ -901,16 +960,18 @@ export default function (havliand_agent: ExtensionAPI) {
 				}
 
 				// Collapsed view
-				let text =
-					icon +
-					" " +
-					theme.fg("toolTitle", theme.bold("chain ")) +
-					theme.fg("accent", `${successCount}/${details.results.length} steps`);
+				let text = icon + " " + theme.fg("toolTitle", theme.bold("chain ")) + theme.fg("accent", status);
 				for (const r of details.results) {
-					const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
+					const rIcon =
+						r.exitCode === -1
+							? theme.fg("warning", "⏳")
+							: r.exitCode === 0
+								? theme.fg("success", "✓")
+								: theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
-					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
+					if (displayItems.length === 0)
+						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5)}`;
 				}
 				const usageStr = formatUsageStats(aggregateUsage(details.results));
