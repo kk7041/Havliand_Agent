@@ -68,12 +68,12 @@ jobs:
           cd packages/coding-agent/binaries
 
           binary_assets=(
-            pi-darwin-arm64.tar.gz
-            pi-darwin-x64.tar.gz
-            pi-linux-x64.tar.gz
-            pi-linux-arm64.tar.gz
-            pi-windows-x64.zip
-            pi-windows-arm64.zip
+            havliand_agent-darwin-arm64.tar.gz
+            havliand_agent-darwin-x64.tar.gz
+            havliand_agent-linux-x64.tar.gz
+            havliand_agent-linux-arm64.tar.gz
+            havliand_agent-windows-x64.zip
+            havliand_agent-windows-arm64.zip
           )
 
           for asset in "${binary_assets[@]}"; do
@@ -84,12 +84,12 @@ jobs:
 
           cd "${GITHUB_WORKSPACE}/release-assets"
           release_assets=(
-            pi-darwin-arm64.tar.gz
-            pi-darwin-x64.tar.gz
-            pi-linux-x64.tar.gz
-            pi-linux-arm64.tar.gz
-            pi-windows-x64.zip
-            pi-windows-arm64.zip
+            havliand_agent-darwin-arm64.tar.gz
+            havliand_agent-darwin-x64.tar.gz
+            havliand_agent-linux-x64.tar.gz
+            havliand_agent-linux-arm64.tar.gz
+            havliand_agent-windows-x64.zip
+            havliand_agent-windows-arm64.zip
             pi-coding-agent-install-package.json
             pi-coding-agent-install-package-lock.json
           )
@@ -126,12 +126,12 @@ jobs:
           cd release-assets
 
           expected_assets=(
-            pi-darwin-arm64.tar.gz
-            pi-darwin-x64.tar.gz
-            pi-linux-x64.tar.gz
-            pi-linux-arm64.tar.gz
-            pi-windows-x64.zip
-            pi-windows-arm64.zip
+            havliand_agent-darwin-arm64.tar.gz
+            havliand_agent-darwin-x64.tar.gz
+            havliand_agent-linux-x64.tar.gz
+            havliand_agent-linux-arm64.tar.gz
+            havliand_agent-windows-x64.zip
+            havliand_agent-windows-arm64.zip
             pi-coding-agent-install-package.json
             pi-coding-agent-install-package-lock.json
             SHA256SUMS
@@ -153,12 +153,12 @@ jobs:
           cd release-assets
 
           release_assets=(
-            pi-darwin-arm64.tar.gz
-            pi-darwin-x64.tar.gz
-            pi-linux-x64.tar.gz
-            pi-linux-arm64.tar.gz
-            pi-windows-x64.zip
-            pi-windows-arm64.zip
+            havliand_agent-darwin-arm64.tar.gz
+            havliand_agent-darwin-x64.tar.gz
+            havliand_agent-linux-x64.tar.gz
+            havliand_agent-linux-arm64.tar.gz
+            havliand_agent-windows-x64.zip
+            havliand_agent-windows-arm64.zip
             pi-coding-agent-install-package.json
             pi-coding-agent-install-package-lock.json
             SHA256SUMS
