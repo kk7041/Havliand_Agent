@@ -13,7 +13,7 @@ import {
 	Text,
 } from "@havliand_agent/tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
-import type { DefaultProjectTrust, WarningSettings } from "../../../core/settings-manager.ts";
+import type { DefaultProjectTrust, ToolWidgetMode, WarningSettings } from "../../../core/settings-manager.ts";
 import {
 	getSelectListTheme,
 	getSettingsListTheme,
@@ -71,6 +71,7 @@ export interface SettingsConfig {
 	enableInstallTelemetry: boolean;
 	doubleEscapeAction: "fork" | "tree" | "none";
 	treeFilterMode: "default" | "no-tools" | "user-only" | "labeled-only" | "all";
+	toolWidgetMode: ToolWidgetMode;
 	showHardwareCursor: boolean;
 	editorPaddingX: number;
 	outputPad: 0 | 1;
@@ -102,6 +103,7 @@ export interface SettingsCallbacks {
 	onEnableInstallTelemetryChange: (enabled: boolean) => void;
 	onDoubleEscapeActionChange: (action: "fork" | "tree" | "none") => void;
 	onTreeFilterModeChange: (mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all") => void;
+	onToolWidgetModeChange: (mode: ToolWidgetMode) => void;
 	onShowHardwareCursorChange: (enabled: boolean) => void;
 	onEditorPaddingXChange: (padding: number) => void;
 	onOutputPadChange: (padding: 0 | 1) => void;
@@ -574,6 +576,13 @@ export class SettingsSelectorComponent extends Container {
 				values: ["default", "no-tools", "user-only", "labeled-only", "all"],
 			},
 			{
+				id: "tool-widget-mode",
+				label: "Tool display",
+				description: "Display density for tool calls and results in chat",
+				currentValue: config.toolWidgetMode,
+				values: ["compacted", "default", "expanded"],
+			},
+			{
 				id: "warnings",
 				label: "Warnings",
 				description: "Enable or disable individual warnings",
@@ -794,12 +803,15 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					}
 					case "double-escape-action":
-						callbacks.onDoubleEscapeActionChange(newValue as "fork" | "tree");
+						callbacks.onDoubleEscapeActionChange(newValue as "fork" | "tree" | "none");
 						break;
 					case "tree-filter-mode":
 						callbacks.onTreeFilterModeChange(
 							newValue as "default" | "no-tools" | "user-only" | "labeled-only" | "all",
 						);
+						break;
+					case "tool-widget-mode":
+						callbacks.onToolWidgetModeChange(newValue as ToolWidgetMode);
 						break;
 					case "show-hardware-cursor":
 						callbacks.onShowHardwareCursorChange(newValue === "true");

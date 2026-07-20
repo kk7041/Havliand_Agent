@@ -1,4 +1,4 @@
-import { Box, Container, Markdown, type MarkdownTheme } from "@havliand_agent/tui";
+import { Container, type MarkdownTheme, Text } from "@havliand_agent/tui";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -10,13 +10,12 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
  */
 export class UserMessageComponent extends Container {
 	private text: string;
-	private markdownTheme: MarkdownTheme;
 	private outputPad: number;
 
 	constructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {
 		super();
 		this.text = text;
-		this.markdownTheme = markdownTheme;
+		void markdownTheme;
 		this.outputPad = outputPad;
 		this.rebuild();
 	}
@@ -28,20 +27,37 @@ export class UserMessageComponent extends Container {
 
 	private rebuild(): void {
 		this.clear();
-		const contentBox = new Box(this.outputPad, 1, (content: string) => theme.bg("userMessageBg", content));
-		contentBox.addChild(
-			new Markdown(
-				this.text,
-				0,
-				0,
-				this.markdownTheme,
-				{
-					color: (content: string) => theme.fg("userMessageText", content),
-				},
-				{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },
-			),
-		);
-		this.addChild(contentBox);
+		this.addChild(new Text(this.renderUserText(), this.outputPad, 0));
+	}
+
+	private renderUserText(): string {
+		const lines = this.text.split("\n");
+		const multiline = lines.length > 1;
+		const prefix = theme.bold(theme.fg("accent", "❯ "));
+		const continuationPrefix = multiline ? theme.fg("accent", "│ ") : "  ";
+		return lines
+			.map(
+				(line, index) =>
+					`${index === 0 ? prefix : continuationPrefix}${this.highlightInputLine(line, index === 0)}`,
+			)
+			.join("\n");
+	}
+
+	private highlightInputLine(line: string, isFirstLine: boolean): string {
+		if (isFirstLine && line.startsWith("!")) {
+			return theme.fg("bashMode", line);
+		}
+		if (isFirstLine && line.startsWith("/")) {
+			const [command = "", ...rest] = line.split(" ");
+			const suffix = rest.length > 0 ? ` ${rest.join(" ")}` : "";
+			return `${theme.fg("accent", command)}${theme.fg("userMessageText", suffix)}`;
+		}
+		return line
+			.split(/(\s+)/u)
+			.map((part) =>
+				part.startsWith("@") && part.length > 1 ? theme.fg("accent", part) : theme.fg("userMessageText", part),
+			)
+			.join("");
 	}
 
 	override render(width: number): string[] {

@@ -72,6 +72,32 @@ export function invalidArgText(theme: Theme): string {
 	return theme.fg("error", "[invalid arg]");
 }
 
+export function toolHeader(
+	name: string,
+	theme: Theme,
+	options?: { state?: "pending" | "running" | "success" | "error" },
+): string {
+	const state = options?.state ?? "pending";
+	const marker =
+		state === "error"
+			? theme.bold(theme.fg("error", "✗"))
+			: state === "success"
+				? theme.bold(theme.fg("success", "✓"))
+				: state === "running"
+					? theme.bold(theme.fg("accent", "●"))
+					: theme.fg("dim", "○");
+	return `${marker} ${theme.fg("toolTitle", theme.bold(name))}`;
+}
+
+export function cornerBlock(text: string, theme: Theme): string {
+	if (!text) return "";
+	const prefix = theme.fg("dim", "⎿");
+	return text
+		.split("\n")
+		.map((line) => `${prefix} ${line}`)
+		.join("\n");
+}
+
 export function renderToolPath(
 	rawPath: string | null,
 	theme: Theme,

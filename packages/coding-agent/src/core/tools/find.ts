@@ -9,7 +9,7 @@ import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { pathExists, resolveToCwd } from "./path-utils.ts";
-import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.ts";
+import { getTextOutput, invalidArgText, shortenPath, str, toolHeader } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
@@ -63,7 +63,7 @@ function formatFindCall(args: { pattern: string; path?: string; limit?: number }
 	const limit = args?.limit;
 	const invalidArg = invalidArgText(theme);
 	let text =
-		theme.fg("toolTitle", theme.bold("find")) +
+		toolHeader("Find", theme) +
 		" " +
 		(pattern === null ? invalidArg : theme.fg("accent", pattern || "")) +
 		theme.fg("toolOutput", ` in ${path === null ? invalidArg : path}`);

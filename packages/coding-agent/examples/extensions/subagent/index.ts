@@ -905,7 +905,7 @@ export default function (havliand_agent: ExtensionAPI) {
 				if (expanded) {
 					const container = new Container();
 					container.addChild(
-						new Text(icon + " " + theme.fg("toolTitle", theme.bold("chain ")) + theme.fg("accent", status), 0, 0),
+						new Text(`${icon} ${theme.fg("toolTitle", theme.bold("chain "))}${theme.fg("accent", status)}`, 0, 0),
 					);
 
 					for (const r of details.results) {
@@ -960,7 +960,7 @@ export default function (havliand_agent: ExtensionAPI) {
 				}
 
 				// Collapsed view
-				let text = icon + " " + theme.fg("toolTitle", theme.bold("chain ")) + theme.fg("accent", status);
+				let text = `${icon} ${theme.fg("toolTitle", theme.bold("chain "))}${theme.fg("accent", status)}`;
 				for (const r of details.results) {
 					const rIcon =
 						r.exitCode === -1

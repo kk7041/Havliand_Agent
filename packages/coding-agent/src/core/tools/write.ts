@@ -8,7 +8,7 @@ import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/inte
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
 import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
-import { normalizeDisplayText, renderToolPath, replaceTabs, str } from "./render-utils.ts";
+import { normalizeDisplayText, renderToolPath, replaceTabs, str, toolHeader } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const writeSchema = Type.Object({
@@ -138,7 +138,7 @@ function formatWriteCall(
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
 	const pathDisplay = renderToolPath(rawPath, theme, cwd);
-	let text = `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`;
+	let text = `${toolHeader("Write", theme)} ${pathDisplay}`;
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;

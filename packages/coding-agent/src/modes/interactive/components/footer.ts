@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, truncateToWidth, visibleWidth } from "@havliand_agent/tui";
+import { type Component, truncateToWidth } from "@havliand_agent/tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
@@ -50,6 +50,8 @@ export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
+	private inputText = "";
+	private tick = 0;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
@@ -62,6 +64,10 @@ export class FooterComponent implements Component {
 
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.autoCompactEnabled = enabled;
+	}
+
+	setInputText(text: string): void {
+		this.inputText = text;
 	}
 
 	/**
@@ -128,8 +134,13 @@ export class FooterComponent implements Component {
 			pwd = `${pwd} • ${sessionName}`;
 		}
 
-		// Build stats line
+		// Build status line
 		const statsParts = [];
+		const modelName = state.model?.id || "no-model";
+		const providerName = state.model?.provider;
+		const modelDisplay =
+			providerName && this.footerData.getAvailableProviderCount() > 1 ? `${providerName}/${modelName}` : modelName;
+		statsParts.push(modelDisplay);
 		if (totalInput) statsParts.push(`↑${formatTokens(totalInput)}`);
 		if (totalOutput) statsParts.push(`↓${formatTokens(totalOutput)}`);
 		if (totalCacheRead) statsParts.push(`R${formatTokens(totalCacheRead)}`);
@@ -162,72 +173,28 @@ export class FooterComponent implements Component {
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
-
-		let statsLeft = statsParts.join(" ");
-
-		// Add model name on the right side, plus thinking level if model supports it
-		const modelName = state.model?.id || "no-model";
-
-		let statsLeftWidth = visibleWidth(statsLeft);
-
-		// If statsLeft is too wide, truncate it
-		if (statsLeftWidth > width) {
-			statsLeft = truncateToWidth(statsLeft, width, "...");
-			statsLeftWidth = visibleWidth(statsLeft);
+		if (this.session.isCompacting) {
+			statsParts.push(theme.fg("warning", "[compacting]"));
+		} else if (this.session.isStreaming) {
+			statsParts.push(theme.fg("accent", "[streaming]"));
+		} else if (this.session.isBashRunning) {
+			statsParts.push(theme.fg("bashMode", "[bash]"));
 		}
 
-		// Calculate available space for padding (minimum 2 spaces between stats and model)
-		const minPadding = 2;
+		let statsLine = statsParts.join(theme.fg("dim", " │ "));
 
-		// Add thinking level indicator if model supports reasoning
-		let rightSideWithoutProvider = modelName;
-		if (state.model?.reasoning) {
+		if (statsLine && state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
-			rightSideWithoutProvider =
-				thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
+			statsLine +=
+				theme.fg("dim", " │ ") +
+				(thinkingLevel === "off" ? theme.fg("dim", "thinking off") : theme.fg("accent", thinkingLevel));
 		}
-
-		// Prepend the provider in parentheses if there are multiple providers and there's enough room
-		let rightSide = rightSideWithoutProvider;
-		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
-			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
-				// Too wide, fall back
-				rightSide = rightSideWithoutProvider;
-			}
-		}
-
-		const rightSideWidth = visibleWidth(rightSide);
-		const totalNeeded = statsLeftWidth + minPadding + rightSideWidth;
-
-		let statsLine: string;
-		if (totalNeeded <= width) {
-			// Both fit - add padding to right-align model
-			const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
-			statsLine = statsLeft + padding + rightSide;
-		} else {
-			// Need to truncate right side
-			const availableForRight = width - statsLeftWidth - minPadding;
-			if (availableForRight > 0) {
-				const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
-				const truncatedRightWidth = visibleWidth(truncatedRight);
-				const padding = " ".repeat(Math.max(0, width - statsLeftWidth - truncatedRightWidth));
-				statsLine = statsLeft + padding + truncatedRight;
-			} else {
-				// Not enough space for right side at all
-				statsLine = statsLeft;
-			}
-		}
-
-		// Apply dim to each part separately. statsLeft may contain color codes (for context %)
-		// that end with a reset, which would clear an outer dim wrapper. So we dim the parts
-		// before and after the colored section independently.
-		const dimStatsLeft = theme.fg("dim", statsLeft);
-		const remainder = statsLine.slice(statsLeft.length); // padding + rightSide
-		const dimRemainder = theme.fg("dim", remainder);
 
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		const lines = [
+			truncateToWidth(theme.fg("dim", ` ${statsLine}`), width, theme.fg("dim", "...")),
+			truncateToWidth(theme.fg("dim", ` ${this.getHintText(pwdLine)}`), width, theme.fg("dim", "...")),
+		];
 
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();
@@ -241,5 +208,35 @@ export class FooterComponent implements Component {
 		}
 
 		return lines;
+	}
+
+	private getHintText(pwdLine: string): string {
+		this.tick++;
+		const text = this.inputText;
+		if (this.session.isStreaming || this.session.isCompacting) {
+			return "Esc to interrupt";
+		}
+		if (this.session.isBashRunning) {
+			return "bash running";
+		}
+		if (text.startsWith("!")) {
+			return "shell mode activated";
+		}
+		if (text.startsWith("/")) {
+			return "Tab to complete · Enter to run";
+		}
+		if (/(^|\s)@[^\s]*$/u.test(text)) {
+			return "Tab to insert file path";
+		}
+		if (text.trim()) {
+			return "Enter to send · Shift+Enter for newline";
+		}
+
+		const tips = [
+			"/ for commands · @ for files · ! for bash",
+			"/settings to configure UI",
+			"/model to switch models",
+		];
+		return `${pwdLine.replace(/\x1b\[[0-9;]*m/g, "")} · ${tips[Math.floor(this.tick / 120) % tips.length]}`;
 	}
 }
