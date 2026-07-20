@@ -63,6 +63,8 @@ export type DefaultProjectTrust = "ask" | "always" | "never";
 
 export type TransportSetting = Transport;
 
+export type ToolWidgetMode = "compacted" | "default" | "expanded";
+
 /**
  * Package source for npm/git packages.
  * - String form: load all resources from the package
@@ -115,6 +117,7 @@ export interface Settings {
 	enabledModels?: string[]; // Model patterns for cycling (same format as --models CLI flag)
 	doubleEscapeAction?: "fork" | "tree" | "none"; // Action for double-escape with empty editor (default: "tree")
 	treeFilterMode?: "default" | "no-tools" | "user-only" | "labeled-only" | "all"; // Default filter when opening /tree
+	toolWidgetMode?: ToolWidgetMode; // Tool display density in the TUI
 	thinkingBudgets?: ThinkingBudgetsSettings; // Custom token budgets for thinking levels
 	editorPaddingX?: number; // Horizontal padding for input editor (default: 0)
 	outputPad?: 0 | 1; // Horizontal padding for chat message output (default: 1)
@@ -1175,6 +1178,17 @@ export class SettingsManager {
 	setTreeFilterMode(mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all"): void {
 		this.globalSettings.treeFilterMode = mode;
 		this.markModified("treeFilterMode");
+		this.save();
+	}
+
+	getToolWidgetMode(): ToolWidgetMode {
+		const mode = this.settings.toolWidgetMode;
+		return mode === "compacted" || mode === "expanded" ? mode : "default";
+	}
+
+	setToolWidgetMode(mode: ToolWidgetMode): void {
+		this.globalSettings.toolWidgetMode = mode;
+		this.markModified("toolWidgetMode");
 		this.save();
 	}
 

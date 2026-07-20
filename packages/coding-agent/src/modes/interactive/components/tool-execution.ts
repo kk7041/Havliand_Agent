@@ -1,5 +1,6 @@
 import { Box, type Component, Container, getCapabilities, Image, Spacer, Text, type TUI } from "@havliand_agent/tui";
 import type { ToolDefinition, ToolRenderContext } from "../../../core/extensions/types.ts";
+import type { ToolWidgetMode } from "../../../core/settings-manager.ts";
 import { createAllToolDefinitions, type ToolName } from "../../../core/tools/index.ts";
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { convertToPng } from "../../../utils/image-convert.ts";
@@ -8,6 +9,7 @@ import { theme } from "../theme/theme.ts";
 export interface ToolExecutionOptions {
 	showImages?: boolean;
 	imageWidthCells?: number;
+	toolWidgetMode?: ToolWidgetMode;
 }
 
 export class ToolExecutionComponent extends Container {
@@ -23,6 +25,7 @@ export class ToolExecutionComponent extends Container {
 	private toolCallId: string;
 	private args: any;
 	private expanded = false;
+	private toolWidgetMode: ToolWidgetMode;
 	private showImages: boolean;
 	private imageWidthCells: number;
 	private isPartial = true;
@@ -57,6 +60,7 @@ export class ToolExecutionComponent extends Container {
 		this.builtInToolDefinition = createAllToolDefinitions(cwd)[toolName as ToolName];
 		this.showImages = options.showImages ?? true;
 		this.imageWidthCells = options.imageWidthCells ?? 60;
+		this.toolWidgetMode = options.toolWidgetMode ?? "default";
 		this.ui = ui;
 		this.cwd = cwd;
 
@@ -65,8 +69,8 @@ export class ToolExecutionComponent extends Container {
 		// Always create all shell variants. contentBox is used for default renderer-based composition.
 		// selfRenderContainer is used when the tool renders its own framing.
 		// contentText is reserved for generic fallback rendering when no tool definition exists.
-		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
-		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
+		this.contentBox = new Box(1, 0, (text: string) => text);
+		this.contentText = new Text("", 1, 0);
 		this.selfRenderContainer = new Container();
 
 		if (this.hasRendererDefinition()) {
@@ -126,14 +130,29 @@ export class ToolExecutionComponent extends Container {
 			executionStarted: this.executionStarted,
 			argsComplete: this.argsComplete,
 			isPartial: this.isPartial,
-			expanded: this.expanded,
+			expanded: this.isEffectivelyExpanded(),
 			showImages: this.showImages,
 			isError: this.result?.isError ?? false,
 		};
 	}
 
+	private isCompacted(): boolean {
+		return this.toolWidgetMode === "compacted";
+	}
+
+	private isEffectivelyExpanded(): boolean {
+		return this.toolWidgetMode === "expanded" || (this.toolWidgetMode === "default" && this.expanded);
+	}
+
+	private getStatusMarker(): string {
+		if (this.result?.isError) return theme.bold(theme.fg("error", "✗"));
+		if (this.result) return theme.bold(theme.fg("success", "✓"));
+		if (this.executionStarted) return theme.bold(theme.fg("accent", "●"));
+		return theme.fg("dim", "○");
+	}
+
 	private createCallFallback(): Component {
-		return new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0);
+		return new Text(`${this.getStatusMarker()} ${theme.fg("toolTitle", theme.bold(this.toolName))}`, 0, 0);
 	}
 
 	private createResultFallback(): Component | undefined {
@@ -203,6 +222,11 @@ export class ToolExecutionComponent extends Container {
 		this.updateDisplay();
 	}
 
+	setToolWidgetMode(mode: ToolWidgetMode): void {
+		this.toolWidgetMode = mode;
+		this.updateDisplay();
+	}
+
 	setShowImages(show: boolean): void {
 		this.showImages = show;
 		this.updateDisplay();
@@ -251,11 +275,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
-		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
-			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
+		const bgFn = (text: string) => text;
 
 		let hasContent = false;
 		this.hideComponent = false;
@@ -283,7 +303,7 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 
-			if (this.result) {
+			if (this.result && !this.isCompacted()) {
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
 					const component = this.createResultFallback();
@@ -295,7 +315,7 @@ export class ToolExecutionComponent extends Container {
 					try {
 						const component = resultRenderer(
 							{ content: this.result.content as any, details: this.result.details },
-							{ expanded: this.expanded, isPartial: this.isPartial },
+							{ expanded: this.isEffectivelyExpanded(), isPartial: this.isPartial },
 							theme,
 							this.getRenderContext(this.resultRendererComponent),
 						);
@@ -363,14 +383,14 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private formatToolExecution(): string {
-		let text = theme.fg("toolTitle", theme.bold(this.toolName));
+		let text = `${this.getStatusMarker()} ${theme.fg("toolTitle", theme.bold(this.toolName))}`;
 		const content = JSON.stringify(this.args, null, 2);
-		if (content) {
-			text += `\n\n${content}`;
+		if (content && !this.isCompacted()) {
+			text += `\n${theme.fg("dim", "⎿")} ${theme.fg("toolOutput", content).replace(/\n/g, `\n${theme.fg("dim", "⎿")} `)}`;
 		}
 		const output = this.getTextOutput();
-		if (output) {
-			text += `\n${output}`;
+		if (output && !this.isCompacted()) {
+			text += `\n${theme.fg("dim", "⎿")} ${theme.fg("toolOutput", output).replace(/\n/g, `\n${theme.fg("dim", "⎿")} `)}`;
 		}
 		return text;
 	}

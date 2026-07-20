@@ -130,7 +130,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
-import { ToolExecutionComponent } from "./components/tool-execution.ts";
+import { ToolExecutionComponent, type ToolExecutionOptions } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
@@ -362,6 +362,7 @@ export class InteractiveMode {
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
+	private toolWidgetMode: ToolExecutionOptions["toolWidgetMode"] = "default";
 
 	// Thinking block visibility state
 	private hideThinkingBlock = false;
@@ -471,10 +472,15 @@ export class InteractiveMode {
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
+		this.defaultEditor.onChange = (text) => {
+			this.footer.setInputText(text);
+			this.ui.requestRender();
+		};
 
 		// Load hide thinking block setting
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
+		this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
 
 		// Register themes from resource loader and initialize
 		setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
@@ -1061,6 +1067,14 @@ export class InteractiveMode {
 
 	private getStartupExpansionState(): boolean {
 		return this.options.verbose || this.toolOutputExpanded;
+	}
+
+	private getToolExecutionOptions(): ToolExecutionOptions {
+		return {
+			showImages: this.settingsManager.getShowImages(),
+			imageWidthCells: this.settingsManager.getImageWidthCells(),
+			toolWidgetMode: this.toolWidgetMode,
+		};
 	}
 
 	/**
@@ -1687,6 +1701,7 @@ export class InteractiveMode {
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
+		this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
 		this.ui.setShowHardwareCursor(this.settingsManager.getShowHardwareCursor());
 		const clearOnShrink = this.settingsManager.getClearOnShrink();
 		this.ui.setClearOnShrink(clearOnShrink);
@@ -2895,10 +2910,7 @@ export class InteractiveMode {
 									content.name,
 									content.id,
 									content.arguments,
-									{
-										showImages: this.settingsManager.getShowImages(),
-										imageWidthCells: this.settingsManager.getImageWidthCells(),
-									},
+									this.getToolExecutionOptions(),
 									this.getRegisteredToolDefinition(content.name),
 									this.ui,
 									this.sessionManager.getCwd(),
@@ -2965,10 +2977,7 @@ export class InteractiveMode {
 						event.toolName,
 						event.toolCallId,
 						event.args,
-						{
-							showImages: this.settingsManager.getShowImages(),
-							imageWidthCells: this.settingsManager.getImageWidthCells(),
-						},
+						this.getToolExecutionOptions(),
 						this.getRegisteredToolDefinition(event.toolName),
 						this.ui,
 						this.sessionManager.getCwd(),
@@ -3294,10 +3303,7 @@ export class InteractiveMode {
 							content.name,
 							content.id,
 							content.arguments,
-							{
-								showImages: this.settingsManager.getShowImages(),
-								imageWidthCells: this.settingsManager.getImageWidthCells(),
-							},
+							this.getToolExecutionOptions(),
 							this.getRegisteredToolDefinition(content.name),
 							this.ui,
 							this.sessionManager.getCwd(),
@@ -4116,6 +4122,7 @@ export class InteractiveMode {
 					enableInstallTelemetry: this.settingsManager.getEnableInstallTelemetry(),
 					doubleEscapeAction: this.settingsManager.getDoubleEscapeAction(),
 					treeFilterMode: this.settingsManager.getTreeFilterMode(),
+					toolWidgetMode: this.settingsManager.getToolWidgetMode(),
 					showHardwareCursor: this.settingsManager.getShowHardwareCursor(),
 					showCacheMissNotices: this.settingsManager.getShowCacheMissNotices(),
 					defaultProjectTrust: this.settingsManager.getDefaultProjectTrust(),
@@ -4215,6 +4222,16 @@ export class InteractiveMode {
 					},
 					onTreeFilterModeChange: (mode) => {
 						this.settingsManager.setTreeFilterMode(mode);
+					},
+					onToolWidgetModeChange: (mode) => {
+						this.toolWidgetMode = mode;
+						this.settingsManager.setToolWidgetMode(mode);
+						for (const child of this.chatContainer.children) {
+							if (child instanceof ToolExecutionComponent) {
+								child.setToolWidgetMode(mode);
+							}
+						}
+						this.ui.requestRender();
 					},
 					onShowHardwareCursorChange: (enabled) => {
 						this.settingsManager.setShowHardwareCursor(enabled);
@@ -5304,6 +5321,7 @@ export class InteractiveMode {
 			}
 			this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 			this.outputPad = this.settingsManager.getOutputPad();
+			this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
 			this.rebuildChatFromMessages();
 			chatRestoredBeforeSessionStart = true;
 		};
