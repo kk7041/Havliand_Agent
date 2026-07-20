@@ -37,6 +37,7 @@ import type {
 	EditorComponent,
 	EditorTheme,
 	KeyId,
+	LoaderIndicatorPreset,
 	OverlayHandle,
 	OverlayOptions,
 	TUI,
@@ -110,6 +111,8 @@ export type TerminalInputHandler = (data: string) => { consume?: boolean; data?:
 
 /** Working indicator configuration for the interactive streaming loader. */
 export interface WorkingIndicatorOptions {
+	/** Built-in animation preset. Ignored when frames are provided. */
+	preset?: LoaderIndicatorPreset;
 	/** Animation frames. Use an empty array to hide the indicator entirely. Custom frames are rendered verbatim. */
 	frames?: string[];
 	/** Frame interval in milliseconds for animated indicators. */
