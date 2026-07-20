@@ -55,7 +55,7 @@ npm install -g --ignore-scripts @havliand_agent/coding-agent
 Installer alternative:
 
 ```bash
-curl -fsSL https://havliand_agent.dev/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/kk7041/Havliand_Agent/main/scripts/install.sh | sh
 ```
 
 Authenticate with an API key:

@@ -13,6 +13,7 @@ import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";
 import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
 import { listModels } from "./cli/list-models.ts";
+import { runStartupModelSetup, shouldOfferStartupModelSetup } from "./cli/model-setup.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
@@ -616,6 +617,7 @@ export async function main(args: string[], options?: MainOptions) {
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
+	let startupModelSetupAttempted = false;
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,
@@ -689,6 +691,24 @@ export async function main(args: string[], options?: MainOptions) {
 				message: `Failed to load extension "${path}": ${error}`,
 			})),
 		];
+
+		if (
+			isInitialRuntime &&
+			!startupModelSetupAttempted &&
+			(await shouldOfferStartupModelSetup({
+				appMode,
+				hasCliModel: parsed.model !== undefined || parsed.provider !== undefined || parsed.models !== undefined,
+				hasCliApiKey: parsed.apiKey !== undefined,
+				isRuntimeMetadataCommand: isPlainRuntimeMetadataCommand(parsed),
+				modelRuntime,
+			}))
+		) {
+			startupModelSetupAttempted = true;
+			const configured = await runStartupModelSetup({ agentDir, settingsManager });
+			if (configured) {
+				return createRuntime({ cwd, agentDir, sessionManager, sessionStartEvent, projectTrustContext });
+			}
+		}
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
 		const scopedModels =
