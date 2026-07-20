@@ -12,6 +12,7 @@
 
 ### Added
 
+- Added the built-in `subagent` tool with non-overridable `OG` and `Angel` agents.
 - Added `ModelRuntime` as the canonical async SDK and internal model/auth facade while preserving the synchronous extension-facing `ModelRegistry` API. `ModelRuntime.create()` accepts any havliand_agent-ai `CredentialStore` through its `credentials` option.
 - Added provider-owned `/login` discovery directly from registered havliand_agent-ai providers, including ambient auth status and informational links.
 - Added file-backed dynamic catalogs in `models-store.json`, per-provider havliand_agent.dev catalog overlays, and Radius gateway support including offline migration from legacy credential-cached catalogs.

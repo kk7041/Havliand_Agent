@@ -303,6 +303,6 @@ havliand_agent --exclude-tools ask_question
 
 havliand_agent keeps the core small and pushes workflow-specific behavior into extensions, skills, prompt templates, and packages.
 
-It intentionally does not include built-in MCP, sub-agents, permission popups, plan mode, to-dos, or background bash. You can build or install those workflows as extensions or packages, or use external tools such as containers and tmux.
+It intentionally does not include built-in MCP, permission popups, plan mode, to-dos, or background bash. It does include the `subagent` tool with built-in `OG` and `Angel` agents; custom sub-agents can be added by name when a workflow needs them.
 
 The goal is a small core with extension points for workflows that vary by team.

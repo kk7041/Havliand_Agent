@@ -14,8 +14,8 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
-			{ find: /^@earendil@havliand_agent\-agent/ai$/, replacement: aiSrcIndex },
-			{ find: /^@earendil@havliand_agent\-agent/ai\/compat$/, replacement: aiSrcCompat },
+			{ find: /^@earendil@havliand_agent-agent\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@earendil@havliand_agent-agent\/ai\/compat$/, replacement: aiSrcCompat },
 		],
 	},
 });

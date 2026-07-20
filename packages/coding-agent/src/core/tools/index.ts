@@ -1,3 +1,4 @@
+export { createSubagentToolDefinition } from "../subagent/index.ts";
 export {
 	type BashOperations,
 	type BashSpawnContext,

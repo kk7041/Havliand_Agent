@@ -267,6 +267,14 @@ export {
 	type SkillFrontmatter,
 } from "./core/skills.ts";
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
+export {
+	type AgentConfig,
+	type AgentDiscoveryResult,
+	type AgentScope,
+	createSubagentToolDefinition,
+	discoverAgents,
+	formatAgentList,
+} from "./core/subagent/index.ts";
 export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
 // Tools
 export {

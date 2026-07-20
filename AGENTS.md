@@ -160,12 +160,3 @@ Attribution:
 ## User Override
 
 If the user's instructions conflict with any rule in this document, ask for explicit confirmation before overriding. Only then execute their instructions.
-
-## Subagent Operating Model
-
-- `havliand_agent` is the main brain: it owns investigation strategy, task dispatch, and final validation.
-- Project subagents live in `.havliand_agent/agents/`. When using the `subagent` tool for them, pass `agentScope: "project"` or `agentScope: "both"`.
-- `OG` is the research and fact-finding subagent. Use OG to inspect code, gather evidence, explain problems objectively, and identify risks or unknowns.
-- `Angel` is the execution lead subagent. Use Angel to implement delegated work, apply changes, and run focused validation.
-- Execution hierarchy: `havliand_agent` > `Angel` > `OG`. Both Angel and OG obey `havliand_agent`; Angel leads execution-layer work, and OG supports with verified findings.
-- After Angel or OG finishes, `havliand_agent` must review the result and decide whether the task is complete.

@@ -14,7 +14,7 @@
 
 havliand_agent is a minimal terminal coding harness. Adapt havliand_agent to your workflows, not the other way around, without having to fork and modify havliand_agent internals. Extend it with TypeScript [Extensions](#extensions), [Skills](#skills), [Prompt Templates](#prompt-templates), and [Themes](#themes). Put your extensions, skills, prompt templates, and themes in [havliand_agent Packages](#havliand_agent-packages) and share them with others via npm or git.
 
-havliand_agent ships with powerful defaults but skips features like sub agents and plan mode. Instead, you can ask havliand_agent to build what you want or install a third party havliand_agent package that matches your workflow.
+havliand_agent ships with powerful defaults, including the built-in `subagent` tool with `OG` for research and `Angel` for execution. Workflow-specific behavior such as plan mode remains extensible through packages and extensions.
 
 havliand_agent runs in four modes: interactive, print or JSON, RPC for process integration, and an SDK for embedding in your own apps. See [openclaw/openclaw](https://github.com/openclaw/openclaw) for a real-world SDK integration.
 
@@ -362,7 +362,7 @@ The default export can also be `async`. havliand_agent waits for async extension
 
 **What's possible:**
 - Custom tools (or replace built-in tools entirely)
-- Sub-agents and plan mode
+- Custom sub-agents and plan mode
 - Custom compaction and summarization
 - Permission gates and path protection
 - Custom editors and UI components
@@ -474,7 +474,7 @@ havliand_agent is aggressively extensible so it doesn't have to dictate your wor
 
 **No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support.
 
-**No sub-agents.** There's many ways to do this. Spawn HavliandAgent instances via tmux, or build your own with [extensions](#extensions), or install a package that does it your way.
+**Built-in sub-agents.** Use the `subagent` tool to delegate to `OG` for research and `Angel` for execution. Add custom agents under user or project config with different names when a workflow needs them.
 
 **No permission popups.** Run in a container, or build your own confirmation flow with [extensions](#extensions) inline with your environment and security requirements.
 

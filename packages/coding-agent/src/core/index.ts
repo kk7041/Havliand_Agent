@@ -87,3 +87,11 @@ export {
 	type WorkingIndicatorOptions,
 } from "./extensions/index.ts";
 export { createSyntheticSourceInfo } from "./source-info.ts";
+export {
+	type AgentConfig,
+	type AgentDiscoveryResult,
+	type AgentScope,
+	createSubagentToolDefinition,
+	discoverAgents,
+	formatAgentList,
+} from "./subagent/index.ts";
