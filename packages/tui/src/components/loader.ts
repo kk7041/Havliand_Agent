@@ -2,14 +2,24 @@ import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
 
 export interface LoaderIndicatorOptions {
+	/** Built-in animation preset. Ignored when frames are provided. */
+	preset?: LoaderIndicatorPreset;
 	/** Animation frames. Use an empty array to hide the indicator. */
 	frames?: string[];
 	/** Frame interval in milliseconds for animated indicators. */
 	intervalMs?: number;
 }
 
+export type LoaderIndicatorPreset = "spinner" | "scanner" | "pulse" | "wave";
+
 const DEFAULT_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const DEFAULT_INTERVAL_MS = 80;
+const INDICATOR_PRESETS: Record<LoaderIndicatorPreset, string[]> = {
+	spinner: DEFAULT_FRAMES,
+	scanner: ["▰▱▱▱▱", "▱▰▱▱▱", "▱▱▰▱▱", "▱▱▱▰▱", "▱▱▱▱▰", "▱▱▱▰▱", "▱▱▰▱▱", "▱▰▱▱▱"],
+	pulse: ["●", "◉", "◎", "◌", "◎", "◉"],
+	wave: ["▁▂▃", "▂▃▄", "▃▄▅", "▄▅▆", "▅▆▇", "▄▅▆", "▃▄▅", "▂▃▄"],
+};
 
 /**
  * Loader component that updates with an optional spinning animation.
@@ -63,7 +73,8 @@ export class Loader extends Text {
 
 	setIndicator(indicator?: LoaderIndicatorOptions): void {
 		this.renderIndicatorVerbatim = indicator !== undefined;
-		this.frames = indicator?.frames !== undefined ? [...indicator.frames] : [...DEFAULT_FRAMES];
+		const presetFrames = INDICATOR_PRESETS[indicator?.preset ?? "spinner"];
+		this.frames = indicator?.frames !== undefined ? [...indicator.frames] : [...presetFrames];
 		this.intervalMs = indicator?.intervalMs && indicator.intervalMs > 0 ? indicator.intervalMs : DEFAULT_INTERVAL_MS;
 		this.currentFrame = 0;
 		this.start();

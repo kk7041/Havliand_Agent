@@ -34,7 +34,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			(spinner) => theme.fg("accent", spinner),
 			(text) => theme.fg("muted", text),
 			message,
-			indicator,
+			indicator ?? { preset: "scanner", intervalMs: 90 },
 		);
 	}
 }
