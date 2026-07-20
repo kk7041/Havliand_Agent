@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { type Component, truncateToWidth } from "@havliand_agent/tui";
+import { type Component, truncateToWidth, visibleWidth } from "@havliand_agent/tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
@@ -15,6 +15,17 @@ function sanitizeStatusText(text: string): string {
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
+}
+
+function joinColumns(left: string, right: string, width: number): string {
+	const rightWidth = visibleWidth(right);
+	if (rightWidth + 3 >= width) {
+		return truncateToWidth(right, width, theme.fg("dim", "..."));
+	}
+	const leftWidth = Math.max(1, width - rightWidth - 3);
+	const renderedLeft = truncateToWidth(left, leftWidth, theme.fg("dim", "..."));
+	const gap = " ".repeat(Math.max(1, width - visibleWidth(renderedLeft) - rightWidth));
+	return renderedLeft + gap + right;
 }
 
 /**
@@ -169,7 +180,6 @@ export class FooterComponent implements Component {
 		} else {
 			contextPercentStr = contextPercentDisplay;
 		}
-		statsParts.push(contextPercentStr);
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
@@ -190,10 +200,11 @@ export class FooterComponent implements Component {
 				(thinkingLevel === "off" ? theme.fg("dim", "thinking off") : theme.fg("accent", thinkingLevel));
 		}
 
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
+		const workspaceLine = `${theme.fg("accent", "●")} ${theme.fg("dim", pwd)} ${theme.fg("dim", "│")} ${contextPercentStr}`;
+		const statusLine = joinColumns(workspaceLine, theme.fg("dim", statsLine), width);
 		const lines = [
-			truncateToWidth(theme.fg("dim", ` ${statsLine}`), width, theme.fg("dim", "...")),
-			truncateToWidth(theme.fg("dim", ` ${this.getHintText(pwdLine)}`), width, theme.fg("dim", "...")),
+			statusLine,
+			truncateToWidth(theme.fg("dim", ` ${this.getHintText(pwd)}`), width, theme.fg("dim", "...")),
 		];
 
 		// Add extension statuses on a single line, sorted by key alphabetically
