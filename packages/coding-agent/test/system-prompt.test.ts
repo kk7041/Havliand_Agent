@@ -96,10 +96,13 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Delegating to subagents (MANDATORY):");
-			expect(prompt).toContain("You MUST delegate research");
+			expect(prompt).toContain("Orchestration workflow (MANDATORY):");
+			expect(prompt).toContain('subagent, stage: "research"');
+			expect(prompt).toContain('workflow stage: "awaiting-confirmation"');
+			expect(prompt).toContain("Do NOT delegate execution until the user explicitly approves");
 			expect(prompt).toContain("Available agents: OG (builtin): Research; Angel (builtin): Execute");
-			expect(prompt).toContain("chain mode");
+			expect(prompt).toContain("do NOT use chain mode to link research directly to execution");
+			expect(prompt).toContain("The harness enforces a cap of 3 rework rounds");
 		});
 
 		test("omits delegation guidance when subagent is not selected", () => {
@@ -111,7 +114,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).not.toContain("Delegating to subagents (MANDATORY):");
+			expect(prompt).not.toContain("Orchestration workflow (MANDATORY):");
 		});
 
 		test("omits empty delegation guidance", () => {
@@ -122,7 +125,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).not.toContain("Delegating to subagents (MANDATORY):");
+			expect(prompt).not.toContain("Orchestration workflow (MANDATORY):");
 		});
 	});
 

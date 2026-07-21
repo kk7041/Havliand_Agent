@@ -274,7 +274,21 @@ export {
 	createSubagentToolDefinition,
 	discoverAgents,
 	formatAgentList,
+	formatSubagentPanelOptions,
+	type SingleResult,
+	type SubagentDetails,
+	type UsageStats,
 } from "./core/subagent/index.ts";
+export {
+	formatWorkflowStatus,
+	REWORK_CAP,
+	type SubagentWorkflowStage,
+	WORKFLOW_STAGES,
+	type WorkflowStage,
+	type WorkflowStateListener,
+	type WorkflowStateSnapshot,
+	WorkflowStateStore,
+} from "./core/subagent/workflow-state.ts";
 export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
 // Tools
 export {
@@ -285,6 +299,7 @@ export {
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createAllToolDefinitions,
 	createAllTools,
 	createBashToolDefinition,
 	createCodingToolDefinitions,
@@ -297,6 +312,7 @@ export {
 	createReadToolDefinition,
 	createTool,
 	createToolDefinition,
+	createWorkflowToolDefinition,
 	createWriteToolDefinition,
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -321,6 +337,9 @@ export {
 	type ReadToolDetails,
 	type ReadToolInput,
 	type ReadToolOptions,
+	type Tool,
+	type ToolDef,
+	type ToolName,
 	type ToolsOptions,
 	type TruncationOptions,
 	type TruncationResult,

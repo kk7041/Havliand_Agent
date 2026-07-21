@@ -27,6 +27,13 @@ import { getMarkdownTheme, type ThemeColor, theme } from "../../modes/interactiv
 import type { ExtensionAPI, ToolDefinition } from "../extensions/types.ts";
 import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.ts";
+import {
+	REWORK_CAP,
+	SUBAGENT_WORKFLOW_STAGES,
+	type SubagentWorkflowStage,
+	type WorkflowStateSnapshot,
+	WorkflowStateStore,
+} from "./workflow-state.ts";
 
 export type { AgentConfig, AgentDiscoveryResult, AgentScope } from "./agents.ts";
 export { discoverAgents, formatAgentList } from "./agents.ts";
@@ -161,6 +168,8 @@ export interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	stage?: SubagentWorkflowStage;
+	reworkRound?: number;
 }
 
 export interface SubagentDetails {
@@ -168,6 +177,8 @@ export interface SubagentDetails {
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+	stage?: SubagentWorkflowStage;
+	reworkRound: number;
 }
 
 function getFinalOutput(messages: Message[]): string {
@@ -249,6 +260,11 @@ export function formatSubagentPanelOptions(details: SubagentDetails, now = Date.
 	const running = details.results.filter((r) => r.exitCode === -1).length;
 	const done = details.results.length - running;
 	const failed = details.results.filter((r) => r.exitCode !== -1 && isFailedResult(r)).length;
+	const stageText = details.stage
+		? details.stage === "rework"
+			? `   stage: rework ${details.reworkRound}/${REWORK_CAP}`
+			: `   stage: ${details.stage}`
+		: "";
 	const rows = details.results.map((result) => {
 		const failedResult = isFailedResult(result);
 		const status =
@@ -271,7 +287,7 @@ export function formatSubagentPanelOptions(details: SubagentDetails, now = Date.
 
 	return {
 		title: "subagents",
-		subtitle: `mode: ${details.mode}   live: ${running}   done: ${done}${failed ? `   err: ${failed}` : ""}`,
+		subtitle: `mode: ${details.mode}   live: ${running}   done: ${done}${failed ? `   err: ${failed}` : ""}${stageText}`,
 		rows,
 	};
 }
@@ -335,6 +351,8 @@ async function runSingleAgent(
 	task: string,
 	cwd: string | undefined,
 	step: number | undefined,
+	stage: SubagentWorkflowStage | undefined,
+	reworkRound: number,
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
@@ -355,6 +373,8 @@ async function runSingleAgent(
 			startedAt: now,
 			finishedAt: now,
 			step,
+			stage,
+			reworkRound,
 		};
 	}
 
@@ -376,6 +396,8 @@ async function runSingleAgent(
 		startedAt: Date.now(),
 		model: agent.model,
 		step,
+		stage,
+		reworkRound,
 	};
 
 	const emitUpdate = () => {
@@ -555,11 +577,16 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 	default: "user",
 });
 
+const SubagentStageSchema = StringEnum(SUBAGENT_WORKFLOW_STAGES, {
+	description: 'Workflow stage for UI/reporting and rework counting. Use "research", "execute", or "rework".',
+});
+
 const SubagentParams = Type.Object({
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+	stage: Type.Optional(SubagentStageSchema),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
@@ -569,6 +596,7 @@ const SubagentParams = Type.Object({
 
 export function createSubagentToolDefinition(
 	cwd = process.cwd(),
+	workflowState = new WorkflowStateStore(),
 ): ToolDefinition<typeof SubagentParams, SubagentDetails> {
 	const availableAgents = formatAgentList(discoverAgents(cwd, "user").agents, 10);
 	const agentListText =
@@ -581,6 +609,7 @@ export function createSubagentToolDefinition(
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+			'For orchestration workflows, set stage to "research", "execute", or "rework"; rework calls are capped at 3 rounds.',
 			`Available agents: ${agentListText}.`,
 			'Built-in agents include "OG" and "Angel" and cannot be overridden by custom agents.',
 			`Custom user agents are loaded from ${path.join(getAgentDir(), "agents")}.`,
@@ -594,6 +623,8 @@ export function createSubagentToolDefinition(
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+			const stage = params.stage as SubagentWorkflowStage | undefined;
+			let workflowSnapshot: WorkflowStateSnapshot = workflowState.getSnapshot();
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -607,6 +638,8 @@ export function createSubagentToolDefinition(
 					agentScope,
 					projectAgentsDir: discovery.projectAgentsDir,
 					results,
+					stage,
+					reworkRound: workflowSnapshot.reworkRound,
 				});
 
 			if (modeCount !== 1) {
@@ -622,12 +655,52 @@ export function createSubagentToolDefinition(
 				};
 			}
 
-			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
-				const requestedAgentNames = new Set<string>();
-				if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
-				if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
-				if (params.agent) requestedAgentNames.add(params.agent);
+			const requestedAgentNames = new Set<string>();
+			if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
+			if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
+			if (params.agent) requestedAgentNames.add(params.agent);
 
+			const unknownAgentNames = Array.from(requestedAgentNames).filter(
+				(name) => !agents.some((agent) => agent.name === name),
+			);
+			if (unknownAgentNames.length > 0) {
+				const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Unknown agent: ${unknownAgentNames.map((name) => `"${name}"`).join(", ")}. Available agents: ${available}.`,
+						},
+					],
+					details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
+					isError: true,
+				};
+			}
+
+			if (stage) {
+				const result = workflowState.trackSubagentStage(stage);
+				workflowSnapshot = result.state;
+				if (result.capped) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: "Rework cap (3) reached. Do not delegate again. Summarize the remaining review failures and open questions, then ask the user to decide how to proceed.",
+							},
+						],
+						details: {
+							mode: "single",
+							agentScope,
+							projectAgentsDir: discovery.projectAgentsDir,
+							results: [],
+							stage,
+							reworkRound: workflowSnapshot.reworkRound,
+						},
+					};
+				}
+			}
+
+			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
 				const projectAgentsRequested = Array.from(requestedAgentNames)
 					.map((name) => agents.find((a) => a.name === name))
 					.filter((a): a is AgentConfig => a?.source === "project");
@@ -677,6 +750,8 @@ export function createSubagentToolDefinition(
 						taskWithContext,
 						step.cwd,
 						i + 1,
+						stage,
+						workflowSnapshot.reworkRound,
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
@@ -726,6 +801,8 @@ export function createSubagentToolDefinition(
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 						startedAt: Date.now(),
+						stage,
+						reworkRound: workflowSnapshot.reworkRound,
 					};
 				}
 
@@ -750,6 +827,8 @@ export function createSubagentToolDefinition(
 						t.task,
 						t.cwd,
 						undefined,
+						stage,
+						workflowSnapshot.reworkRound,
 						signal,
 						// Per-task update callback
 						(partial) => {
@@ -792,6 +871,8 @@ export function createSubagentToolDefinition(
 					params.task,
 					params.cwd,
 					undefined,
+					stage,
+					workflowSnapshot.reworkRound,
 					signal,
 					onUpdate,
 					makeDetails("single"),
@@ -820,11 +901,13 @@ export function createSubagentToolDefinition(
 
 		renderCall(args, theme, _context) {
 			const scope: AgentScope = args.agentScope ?? "user";
+			const stageSuffix = typeof args.stage === "string" ? theme.fg("muted", ` [stage: ${args.stage}]`) : "";
 			if (args.chain && args.chain.length > 0) {
 				let text =
 					theme.fg("toolTitle", theme.bold("subagent ")) +
 					theme.fg("accent", `chain (${args.chain.length} steps)`) +
-					theme.fg("muted", ` [${scope}]`);
+					theme.fg("muted", ` [${scope}]`) +
+					stageSuffix;
 				for (let i = 0; i < Math.min(args.chain.length, 3); i++) {
 					const step = args.chain[i];
 					// Clean up {previous} placeholder for display
@@ -844,7 +927,8 @@ export function createSubagentToolDefinition(
 				let text =
 					theme.fg("toolTitle", theme.bold("subagent ")) +
 					theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
-					theme.fg("muted", ` [${scope}]`);
+					theme.fg("muted", ` [${scope}]`) +
+					stageSuffix;
 				for (const t of args.tasks.slice(0, 3)) {
 					const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
 					text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
@@ -857,7 +941,8 @@ export function createSubagentToolDefinition(
 			let text =
 				theme.fg("toolTitle", theme.bold("subagent ")) +
 				theme.fg("accent", agentName) +
-				theme.fg("muted", ` [${scope}]`);
+				theme.fg("muted", ` [${scope}]`) +
+				stageSuffix;
 			text += `\n  ${theme.fg("dim", preview)}`;
 			return new Text(text, 0, 0);
 		},

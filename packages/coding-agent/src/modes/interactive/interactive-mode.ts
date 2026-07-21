@@ -92,7 +92,6 @@ import { copyToClipboard, readClipboardText } from "../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
 import { parseGitUrl } from "../../utils/git.ts";
 import { getHavliandAgentUserAgent } from "../../utils/havliand_agent-user-agent.ts";
-import { formatUserMessageForDisplay } from "../../utils/image-labels.ts";
 import { getCwdRelativePath } from "../../utils/paths.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
@@ -107,8 +106,7 @@ import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
 import { CustomMessageComponent } from "./components/custom-message.ts";
 import { DaxnutsComponent } from "./components/daxnuts.ts";
-import { DeepAgentExpandablePanel, DeepAgentPanel } from "./components/deepagent-panel.ts";
-import { DeepAgentStartupComponent } from "./components/deepagent-startup.ts";
+import { DeepAgentPanel } from "./components/deepagent-panel.ts";
 import { DynamicBorder } from "./components/dynamic-border.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
@@ -150,6 +148,7 @@ import {
 	setRegisteredThemes,
 	stopThemeWatcher,
 	Theme,
+	type ThemeColor,
 	theme,
 } from "./theme/theme.ts";
 import { InteractiveThemeController } from "./theme/theme-controller.ts";
@@ -161,6 +160,27 @@ interface Expandable {
 
 function isExpandable(obj: unknown): obj is Expandable {
 	return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
+}
+
+class ExpandableText extends Text implements Expandable {
+	private readonly getCollapsedText: () => string;
+	private readonly getExpandedText: () => string;
+
+	constructor(
+		getCollapsedText: () => string,
+		getExpandedText: () => string,
+		expanded = false,
+		paddingX = 0,
+		paddingY = 0,
+	) {
+		super(expanded ? getExpandedText() : getCollapsedText(), paddingX, paddingY);
+		this.getCollapsedText = getCollapsedText;
+		this.getExpandedText = getExpandedText;
+	}
+
+	setExpanded(expanded: boolean): void {
+		this.setText(expanded ? this.getExpandedText() : this.getCollapsedText());
+	}
 }
 
 type CompactionQueuedMessage = {
@@ -358,6 +378,7 @@ export class InteractiveMode {
 
 	// Agent subscription unsubscribe function
 	private unsubscribe?: () => void;
+	private unsubscribeWorkflowState?: () => void;
 	private signalCleanupHandlers: Array<() => void> = [];
 
 	// Track if editor is in bash mode (text starts with !)
@@ -448,6 +469,7 @@ export class InteractiveMode {
 		setKeybindings(this.keybindings);
 		const editorPaddingX = this.settingsManager.getEditorPaddingX();
 		const autocompleteMaxVisible = this.settingsManager.getAutocompleteMaxVisible();
+		this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
 		this.defaultEditor = new CustomEditor(this.ui, getEditorTheme(), this.keybindings, {
 			paddingX: editorPaddingX,
 			autocompleteMaxVisible,
@@ -458,10 +480,6 @@ export class InteractiveMode {
 		this.footerDataProvider = new FooterDataProvider(this.sessionManager.getCwd());
 		this.footer = new FooterComponent(this.session, this.footerDataProvider);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
-		this.defaultEditor.onChange = (text) => {
-			this.footer.setInputText(text);
-			this.ui.requestRender();
-		};
 
 		// Load hide thinking block setting
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
@@ -715,6 +733,8 @@ export class InteractiveMode {
 
 		// Add header with keybindings from config (unless silenced)
 		if (this.options.verbose || !this.settingsManager.getQuietStartup()) {
+			const logo = theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`);
+
 			// Build startup instructions using keybinding hint helpers
 			const hint = (keybinding: AppKeybinding, description: string) => keyHint(keybinding, description);
 
@@ -738,25 +758,28 @@ export class InteractiveMode {
 				hint("app.message.dequeue", "to edit all queued messages"),
 				hint("app.clipboard.pasteImage", "to paste image (with text fallback)"),
 				rawKeyHint("drop files", "to attach"),
-			];
+			].join("\n");
 			const compactInstructions = [
 				hint("app.interrupt", "interrupt"),
 				rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit"),
 				rawKeyHint("/", "commands"),
 				rawKeyHint("!", "bash"),
 				hint("app.tools.expand", "more"),
-			];
-			const onboarding =
-				"Ask about the current repo, run shell commands with !, attach files with @, or open /settings.";
-			this.builtInHeader = new DeepAgentStartupComponent(
-				{
-					appName: APP_NAME,
-					version: this.version,
-					compactInstructions,
-					expandedInstructions,
-					onboarding,
-				},
+			].join(theme.fg("muted", " · "));
+			const compactOnboarding = theme.fg(
+				"dim",
+				`Press ${keyText("app.tools.expand")} to show full startup help and loaded resources.`,
+			);
+			const onboarding = theme.fg(
+				"dim",
+				`havliand_agent can explain its own features and look up its docs. Ask it how to use or extend havliand_agent.`,
+			);
+			this.builtInHeader = new ExpandableText(
+				() => `${logo}\n${compactInstructions}\n${compactOnboarding}\n\n${onboarding}`,
+				() => `${logo}\n${expandedInstructions}\n\n${onboarding}`,
 				this.getStartupExpansionState(),
+				1,
+				0,
 			);
 
 			// Setup UI layout
@@ -787,6 +810,7 @@ export class InteractiveMode {
 		this.footerDataProvider.onBranchChange(() => {
 			this.ui.requestRender();
 		});
+		this.bindWorkflowState();
 
 		// Initialize available provider count for footer display
 		await this.updateAvailableProviderCount();
@@ -1049,14 +1073,6 @@ export class InteractiveMode {
 
 	private getStartupExpansionState(): boolean {
 		return this.options.verbose || this.toolOutputExpanded;
-	}
-
-	private getToolExecutionOptions(): ToolExecutionOptions {
-		return {
-			showImages: this.settingsManager.getShowImages(),
-			imageWidthCells: this.settingsManager.getImageWidthCells(),
-			toolWidgetMode: this.toolWidgetMode,
-		};
 	}
 
 	/**
@@ -1405,30 +1421,29 @@ export class InteractiveMode {
 			return;
 		}
 
+		const sectionHeader = (name: string, color: ThemeColor = "mdHeading") => theme.fg(color, `[${name}]`);
 		const formatCompactList = (items: string[], options?: { sort?: boolean }): string => {
 			const labels = items.map((item) => item.trim()).filter((item) => item.length > 0);
 			if (options?.sort !== false) {
 				labels.sort((a, b) => a.localeCompare(b));
 			}
-			return theme.fg("dim", labels.join(", "));
+			return theme.fg("dim", `  ${labels.join(", ")}`);
 		};
-		const loadedSections: Array<{ name: string; collapsedRows: string[]; expandedRows: string[]; count: number }> =
-			[];
 		const addLoadedSection = (
 			name: string,
 			collapsedBody: string,
 			expandedBody = collapsedBody,
-			count?: number,
+			color: ThemeColor = "mdHeading",
 		): void => {
-			const collapsedRows = collapsedBody
-				.split("\n")
-				.map((line) => line.trim())
-				.filter((line) => line.length > 0);
-			const expandedRows = expandedBody
-				.split("\n")
-				.map((line) => line.trim())
-				.filter((line) => line.length > 0);
-			loadedSections.push({ name, collapsedRows, expandedRows, count: count ?? expandedRows.length });
+			const section = new ExpandableText(
+				() => `${sectionHeader(name, color)}\n${collapsedBody}`,
+				() => `${sectionHeader(name, color)}\n${expandedBody}`,
+				this.getStartupExpansionState(),
+				0,
+				0,
+			);
+			this.loadedResourcesContainer.addChild(section);
+			this.loadedResourcesContainer.addChild(new Spacer(1));
 		};
 
 		const skillsResult = this.session.resourceLoader.getSkills();
@@ -1473,7 +1488,7 @@ export class InteractiveMode {
 					contextFiles.map((contextFile) => this.formatContextPath(contextFile.path)),
 					{ sort: false },
 				);
-				addLoadedSection("Context", contextCompactList, contextList, contextFiles.length);
+				addLoadedSection("Context", contextCompactList, contextList);
 			}
 
 			const skills = skillsResult.skills;
@@ -1486,7 +1501,7 @@ export class InteractiveMode {
 					formatPackagePath: (item) => this.getShortPath(item.path, item.sourceInfo),
 				});
 				const skillCompactList = formatCompactList(skills.map((skill) => skill.name));
-				addLoadedSection("Skills", skillCompactList, skillList, skills.length);
+				addLoadedSection("Skills", skillCompactList, skillList);
 			}
 
 			const templates = this.session.promptTemplates;
@@ -1506,7 +1521,7 @@ export class InteractiveMode {
 					},
 				});
 				const promptCompactList = formatCompactList(templates.map((template) => `/${template.name}`));
-				addLoadedSection("Prompts", promptCompactList, templateList, templates.length);
+				addLoadedSection("Prompts", promptCompactList, templateList);
 			}
 
 			if (extensions.length > 0) {
@@ -1517,7 +1532,7 @@ export class InteractiveMode {
 						this.formatExtensionDisplayPath(this.getShortPath(item.path, item.sourceInfo)),
 				});
 				const extensionCompactList = formatCompactList(this.getCompactExtensionLabels(extensions));
-				addLoadedSection("Extensions", extensionCompactList, extList, extensions.length);
+				addLoadedSection("Extensions", extensionCompactList, extList, "mdHeading");
 			}
 
 			// Show loaded themes (excluding built-in)
@@ -1540,62 +1555,27 @@ export class InteractiveMode {
 							loadedTheme.name ?? this.getCompactPathLabel(loadedTheme.sourcePath!, loadedTheme.sourceInfo),
 					),
 				);
-				addLoadedSection("Themes", themeCompactList, themeList, customThemes.length);
-			}
-
-			if (loadedSections.length > 0) {
-				this.loadedResourcesContainer.addChild(new Spacer(1));
-				this.loadedResourcesContainer.addChild(
-					new DeepAgentExpandablePanel(
-						{
-							title: "Workspace resources",
-							subtitle: `${loadedSections.reduce((sum, section) => sum + section.count, 0)} loaded`,
-							sections: loadedSections.map((section) => ({
-								title: `${section.name} ${theme.fg("dim", `(${section.count})`)}`,
-								rows: section.collapsedRows,
-							})),
-						},
-						{
-							title: "Workspace resources",
-							subtitle: "expanded resource view",
-							sections: loadedSections.map((section) => ({
-								title: `${section.name} ${theme.fg("dim", `(${section.count})`)}`,
-								rows: section.expandedRows,
-							})),
-						},
-						this.getStartupExpansionState(),
-					),
-				);
-				this.loadedResourcesContainer.addChild(new Spacer(1));
+				addLoadedSection("Themes", themeCompactList, themeList);
 			}
 		}
 
 		if (showDiagnostics) {
-			const addDiagnosticPanel = (title: string, warningLines: string): void => {
-				const rows = warningLines
-					.split("\n")
-					.map((line) => line.trim())
-					.filter((line) => line.length > 0);
-				this.loadedResourcesContainer.addChild(
-					new DeepAgentPanel({
-						title,
-						subtitle: theme.fg("warning", "needs attention"),
-						rows,
-					}),
-				);
-				this.loadedResourcesContainer.addChild(new Spacer(1));
-			};
-
 			const skillDiagnostics = skillsResult.diagnostics;
 			if (skillDiagnostics.length > 0) {
 				const warningLines = this.formatDiagnostics(skillDiagnostics, sourceInfos);
-				addDiagnosticPanel("Skill conflicts", warningLines);
+				this.loadedResourcesContainer.addChild(
+					new Text(`${theme.fg("warning", "[Skill conflicts]")}\n${warningLines}`, 0, 0),
+				);
+				this.loadedResourcesContainer.addChild(new Spacer(1));
 			}
 
 			const promptDiagnostics = promptsResult.diagnostics;
 			if (promptDiagnostics.length > 0) {
 				const warningLines = this.formatDiagnostics(promptDiagnostics, sourceInfos);
-				addDiagnosticPanel("Prompt conflicts", warningLines);
+				this.loadedResourcesContainer.addChild(
+					new Text(`${theme.fg("warning", "[Prompt conflicts]")}\n${warningLines}`, 0, 0),
+				);
+				this.loadedResourcesContainer.addChild(new Spacer(1));
 			}
 
 			const extensionDiagnostics: ResourceDiagnostic[] = [];
@@ -1615,13 +1595,19 @@ export class InteractiveMode {
 
 			if (extensionDiagnostics.length > 0) {
 				const warningLines = this.formatDiagnostics(extensionDiagnostics, sourceInfos);
-				addDiagnosticPanel("Extension issues", warningLines);
+				this.loadedResourcesContainer.addChild(
+					new Text(`${theme.fg("warning", "[Extension issues]")}\n${warningLines}`, 0, 0),
+				);
+				this.loadedResourcesContainer.addChild(new Spacer(1));
 			}
 
 			const themeDiagnostics = themesResult.diagnostics;
 			if (themeDiagnostics.length > 0) {
 				const warningLines = this.formatDiagnostics(themeDiagnostics, sourceInfos);
-				addDiagnosticPanel("Theme conflicts", warningLines);
+				this.loadedResourcesContainer.addChild(
+					new Text(`${theme.fg("warning", "[Theme conflicts]")}\n${warningLines}`, 0, 0),
+				);
+				this.loadedResourcesContainer.addChild(new Spacer(1));
 			}
 		}
 	}
@@ -1713,7 +1699,6 @@ export class InteractiveMode {
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
-		this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
 		this.ui.setShowHardwareCursor(this.settingsManager.getShowHardwareCursor());
 		const clearOnShrink = this.settingsManager.getClearOnShrink();
 		this.ui.setClearOnShrink(clearOnShrink);
@@ -1730,10 +1715,19 @@ export class InteractiveMode {
 		}
 	}
 
+	private bindWorkflowState(): void {
+		this.unsubscribeWorkflowState?.();
+		this.unsubscribeWorkflowState = this.session.onWorkflowStateChange((state) => {
+			this.footerDataProvider.setWorkflowState(state);
+			this.ui.requestRender();
+		});
+	}
+
 	private async rebindCurrentSession(options: { renderBeforeBind?: boolean } = {}): Promise<void> {
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 		this.applyRuntimeSettings();
+		this.bindWorkflowState();
 		if (options.renderBeforeBind) {
 			this.renderCurrentSessionState();
 			this.subscribeToAgent();
@@ -1797,6 +1791,8 @@ export class InteractiveMode {
 			agentScope: first.agentScope,
 			projectAgentsDir: first.projectAgentsDir,
 			results: details.flatMap((detail) => detail.results),
+			stage: details.find((detail) => detail.stage)?.stage,
+			reworkRound: Math.max(...details.map((detail) => detail.reworkRound)),
 		};
 	}
 
@@ -2875,7 +2871,6 @@ export class InteractiveMode {
 		switch (event.type) {
 			case "agent_start":
 				this.pendingTools.clear();
-				this.clearSubagentPanel();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
 				}
@@ -2957,7 +2952,11 @@ export class InteractiveMode {
 									content.name,
 									content.id,
 									content.arguments,
-									this.getToolExecutionOptions(),
+									{
+										showImages: this.settingsManager.getShowImages(),
+										imageWidthCells: this.settingsManager.getImageWidthCells(),
+										toolWidgetMode: this.toolWidgetMode,
+									},
 									this.getRegisteredToolDefinition(content.name),
 									this.ui,
 									this.sessionManager.getCwd(),
@@ -3024,7 +3023,11 @@ export class InteractiveMode {
 						event.toolName,
 						event.toolCallId,
 						event.args,
-						this.getToolExecutionOptions(),
+						{
+							showImages: this.settingsManager.getShowImages(),
+							imageWidthCells: this.settingsManager.getImageWidthCells(),
+							toolWidgetMode: this.toolWidgetMode,
+						},
 						this.getRegisteredToolDefinition(event.toolName),
 						this.ui,
 						this.sessionManager.getCwd(),
@@ -3167,7 +3170,12 @@ export class InteractiveMode {
 
 	/** Extract text content from a user message */
 	private getUserMessageText(message: Message): string {
-		return formatUserMessageForDisplay(message);
+		if (message.role !== "user") return "";
+		const textBlocks =
+			typeof message.content === "string"
+				? [{ type: "text", text: message.content }]
+				: message.content.filter((c: { type: string }) => c.type === "text");
+		return textBlocks.map((c) => (c as { text: string }).text).join("");
 	}
 
 	/**
@@ -3351,7 +3359,11 @@ export class InteractiveMode {
 							content.name,
 							content.id,
 							content.arguments,
-							this.getToolExecutionOptions(),
+							{
+								showImages: this.settingsManager.getShowImages(),
+								imageWidthCells: this.settingsManager.getImageWidthCells(),
+								toolWidgetMode: this.toolWidgetMode,
+							},
 							this.getRegisteredToolDefinition(content.name),
 							this.ui,
 							this.sessionManager.getCwd(),
@@ -6050,6 +6062,10 @@ export class InteractiveMode {
 		this.footerDataProvider.dispose();
 		if (this.unsubscribe) {
 			this.unsubscribe();
+		}
+		if (this.unsubscribeWorkflowState) {
+			this.unsubscribeWorkflowState();
+			this.unsubscribeWorkflowState = undefined;
 		}
 		if (this.isInitialized) {
 			this.ui.stop();

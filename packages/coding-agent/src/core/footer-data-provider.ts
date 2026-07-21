@@ -2,6 +2,7 @@ import { type ExecFileException, execFile, spawnSync } from "child_process";
 import { existsSync, type FSWatcher, readFileSync, type Stats, statSync, unwatchFile, watchFile } from "fs";
 import { dirname, join, resolve } from "path";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
+import { formatWorkflowStatus, type WorkflowStateSnapshot } from "./subagent/workflow-state.ts";
 
 type GitPaths = {
 	repoDir: string;
@@ -101,6 +102,7 @@ export class FooterDataProvider {
 	private static readonly WATCH_DEBOUNCE_MS = 500;
 
 	private extensionStatuses = new Map<string, string>();
+	private workflowStatus: string | undefined;
 	private cachedBranch: string | null | undefined = undefined;
 	private gitPaths: GitPaths | null | undefined = undefined;
 	private headWatcher: FSWatcher | null = null;
@@ -136,6 +138,10 @@ export class FooterDataProvider {
 		return this.extensionStatuses;
 	}
 
+	getWorkflowStatus(): string | undefined {
+		return this.workflowStatus;
+	}
+
 	/** Subscribe to git branch changes. Returns unsubscribe function. */
 	onBranchChange(callback: () => void): () => void {
 		this.branchChangeCallbacks.add(callback);
@@ -154,6 +160,11 @@ export class FooterDataProvider {
 	/** Internal: clear extension statuses */
 	clearExtensionStatuses(): void {
 		this.extensionStatuses.clear();
+	}
+
+	setWorkflowState(state: WorkflowStateSnapshot): void {
+		const status = formatWorkflowStatus(state);
+		this.workflowStatus = status && state.note ? `${status} - ${state.note}` : status;
 	}
 
 	/** Number of unique providers with available models (for footer display) */
@@ -384,5 +395,5 @@ export class FooterDataProvider {
 /** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
-	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
+	"getGitBranch" | "getExtensionStatuses" | "getWorkflowStatus" | "getAvailableProviderCount" | "onBranchChange"
 >;

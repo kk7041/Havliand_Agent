@@ -101,9 +101,10 @@ import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { createSubagentToolDefinition, discoverAgents, formatAgentList } from "./subagent/index.ts";
+import { type WorkflowStateListener, WorkflowStateStore } from "./subagent/workflow-state.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
-import { createAllToolDefinitions } from "./tools/index.ts";
+import { createAllToolDefinitions, createWorkflowToolDefinition } from "./tools/index.ts";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
 
 // ============================================================================
@@ -327,6 +328,7 @@ export class AgentSession {
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	private _cwd: string;
+	private _workflowState = new WorkflowStateStore();
 	private _extensionRunnerRef?: { current?: ExtensionRunner };
 	private _initialActiveToolNames?: string[];
 	private _allowedToolNames?: Set<string>;
@@ -904,6 +906,10 @@ export class AgentSession {
 
 	getToolDefinition(name: string): ToolDefinition | undefined {
 		return this._toolDefinitions.get(name)?.definition;
+	}
+
+	onWorkflowStateChange(listener: WorkflowStateListener): () => void {
+		return this._workflowState.subscribe(listener);
 	}
 
 	/**
@@ -2547,7 +2553,8 @@ export class AgentSession {
 						read: { autoResizeImages },
 						bash: { commandPrefix: shellCommandPrefix, shellPath },
 					}),
-					subagent: createSubagentToolDefinition(this._cwd),
+					subagent: createSubagentToolDefinition(this._cwd, this._workflowState),
+					workflow: createWorkflowToolDefinition(this._workflowState),
 				};
 
 		this._baseToolDefinitions = new Map(
@@ -2576,7 +2583,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "subagent"];
+			: ["read", "bash", "edit", "write", "subagent", "workflow"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

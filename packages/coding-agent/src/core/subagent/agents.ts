@@ -70,6 +70,7 @@ Output format:
 	{
 		name: "Angel",
 		description: "Execution lead subagent that implements delegated work under havliand_agent direction",
+		tools: ["read", "bash", "edit", "write"],
 		model: process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL ?? "aicodewith-openai/gpt-5.5",
 		systemPrompt: `You are Angel, the execution lead subagent for havliand_agent.
 
@@ -91,6 +92,7 @@ Operating rules:
 - Prefer minimal correct changes.
 - Preserve user work and unrelated changes.
 - Run focused validation when practical.
+- The task may include review feedback from havliand_agent about a previous attempt. Address every feedback item explicitly, and do not redo unrelated parts that already passed review.
 - Report exactly what changed, what was verified, and what remains.
 
 Output format:

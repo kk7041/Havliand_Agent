@@ -3,12 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
+import type { ExtensionContext } from "../src/core/extensions/index.ts";
 import {
 	createSubagentToolDefinition,
 	discoverAgents,
 	formatSubagentPanelOptions,
 	type SubagentDetails,
 } from "../src/core/subagent/index.ts";
+import { WorkflowStateStore } from "../src/core/subagent/workflow-state.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 describe("built-in subagents", () => {
@@ -43,6 +45,7 @@ describe("built-in subagents", () => {
 		expect(agents.find((agent) => agent.name === "Angel")?.source).toBe("builtin");
 		expect(agents.find((agent) => agent.name === "OG")?.model).toBe("aicodewith-openai/deepseek-v4-pro");
 		expect(agents.find((agent) => agent.name === "Angel")?.model).toBe("aicodewith-openai/gpt-5.5");
+		expect(agents.find((agent) => agent.name === "Angel")?.tools).toEqual(["read", "bash", "edit", "write"]);
 	});
 
 	it("lists built-in and user agents in the subagent tool description", () => {
@@ -128,6 +131,8 @@ Plan work.`,
 			mode: "parallel",
 			agentScope: "user",
 			projectAgentsDir: null,
+			stage: "rework",
+			reworkRound: 2,
 			results: [
 				{
 					agent: "OG",
@@ -156,6 +161,8 @@ Plan work.`,
 					stderr: "",
 					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 					startedAt: 1000,
+					stage: "rework",
+					reworkRound: 2,
 				},
 				{
 					agent: "Angel",
@@ -168,6 +175,8 @@ Plan work.`,
 					startedAt: 1000,
 					finishedAt: 6100,
 					model: "aicodewith-openai/gpt-5.5",
+					stage: "rework",
+					reworkRound: 2,
 				},
 			],
 		};
@@ -176,10 +185,65 @@ Plan work.`,
 
 		expect(panel.subtitle).toContain("live: 1");
 		expect(panel.subtitle).toContain("done: 1");
+		expect(panel.subtitle).toContain("stage: rework 2/3");
 		expect(panel.rows?.join("\n")).toContain("RUN");
 		expect(panel.rows?.join("\n")).toContain("DONE");
 		expect(panel.rows?.join("\n")).toContain("grep");
 		expect(panel.rows?.join("\n")).toContain("2.5s");
 		expect(panel.rows?.join("\n")).toContain("aicodewith-openai/gpt-5.5");
+	});
+
+	it("does not spawn a fourth rework round", async () => {
+		const workflowState = new WorkflowStateStore();
+		workflowState.trackSubagentStage("rework");
+		workflowState.trackSubagentStage("rework");
+		workflowState.trackSubagentStage("rework");
+		const tool = createSubagentToolDefinition(cwd, workflowState);
+		const context = {
+			cwd,
+			hasUI: false,
+			ui: {
+				confirm: async () => true,
+			},
+		} as unknown as ExtensionContext;
+
+		const result = await tool.execute(
+			"rework-4",
+			{ agent: "Angel", task: "fix", stage: "rework" },
+			undefined,
+			undefined,
+			context,
+		);
+
+		expect("isError" in result).toBe(false);
+		expect(result.content[0]?.type === "text" ? result.content[0].text : "").toContain("Rework cap (3) reached");
+		expect(result.details?.results).toHaveLength(0);
+		expect(result.details?.stage).toBe("rework");
+		expect(result.details?.reworkRound).toBe(3);
+	});
+
+	it("does not reset rework round for invalid agents", async () => {
+		const workflowState = new WorkflowStateStore();
+		workflowState.trackSubagentStage("rework");
+		const tool = createSubagentToolDefinition(cwd, workflowState);
+		const context = {
+			cwd,
+			hasUI: false,
+			ui: {
+				confirm: async () => true,
+			},
+		} as unknown as ExtensionContext;
+
+		const result = await tool.execute(
+			"research-1",
+			{ agent: "unknown", task: "inspect", stage: "research" },
+			undefined,
+			undefined,
+			context,
+		);
+
+		expect(result.details?.stage).toBe("research");
+		expect(result.details?.reworkRound).toBe(1);
+		expect(workflowState.getSnapshot().reworkRound).toBe(1);
 	});
 });

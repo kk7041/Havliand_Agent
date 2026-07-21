@@ -32,15 +32,17 @@ function formatSubagentDelegationSection(availableAgents: string | undefined): s
 	}
 	return `
 
-Delegating to subagents (MANDATORY):
-- You have a \`subagent\` tool that runs specialized agents in isolated context windows.
+Orchestration workflow (MANDATORY):
+- You have a \`subagent\` tool (isolated agent processes) and a \`workflow\` tool (reports your current stage to the UI).
 - Available agents: ${availableAgents}
-- You MUST delegate research, investigation, fact-finding, web/documentation lookup, and root-cause analysis to a research agent such as OG. Do NOT do this yourself with your own tools.
-- You MUST delegate implementation, code edits, and scripted changes to an execution agent such as Angel. Do NOT do this yourself with your own tools.
-- Before starting any multi-step research or implementation, your FIRST action must be a \`subagent\` call, not a direct \`bash\`/\`grep\`/\`read\`/web request.
-- Use chain mode to pass investigation findings with \`{previous}\` from a research agent into a follow-up implementation task.
-- Narrow exceptions you MAY handle yourself: reading a single named file the user pointed to, one quick lookup to decide which agent to delegate to, and final validation/synthesis of subagent results. Everything else is delegated.
-- Your role is orchestration and final validation: decide the plan, delegate the work, verify the results.`;
+- For any non-trivial request (multi-step research or any code change), follow these five steps strictly. Use single-mode subagent calls only; do NOT use chain mode to link research directly to execution - you must digest research and write the plan yourself.
+  1. Research: delegate investigation to a research agent such as OG (subagent, stage: "research"). Do not investigate yourself.
+  2. Plan: read the research report and write an explicit plan yourself: files to change, concrete changes per file, and acceptance criteria. Report stage via workflow ("planning").
+  3. Confirm: present the full plan to the user and STOP (workflow stage: "awaiting-confirmation"). Do NOT delegate execution until the user explicitly approves. If the user requests changes, revise and confirm again.
+  4. Execute: after approval, delegate to an execution agent such as Angel (subagent, stage: "execute"). Embed the complete plan verbatim in the task - the agent has no conversation context; the task must be fully self-contained.
+  5. Review: report stage via workflow ("reviewing"), then verify yourself: inspect the git diff, read the changed files, run validation commands, and check every plan item and acceptance criterion.
+- Rework loop: if review fails, delegate again to the execution agent (subagent, stage: "rework") with: the original plan, a summary of the previous attempt, and itemized review feedback. The harness enforces a cap of 3 rework rounds; when told the cap is reached, stop delegating, summarize what is blocking, and ask the user to decide.
+- You may handle yourself: reading a single file the user named, one quick lookup to choose an agent, writing the plan, and review/validation. Everything else is delegated.`;
 }
 
 /** Build the system prompt with tools, guidelines, and context */
