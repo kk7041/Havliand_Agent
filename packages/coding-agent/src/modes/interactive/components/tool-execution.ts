@@ -131,6 +131,7 @@ export class ToolExecutionComponent extends Container {
 			argsComplete: this.argsComplete,
 			isPartial: this.isPartial,
 			expanded: this.isEffectivelyExpanded(),
+			compacted: this.isCompacted(),
 			showImages: this.showImages,
 			isError: this.result?.isError ?? false,
 		};
@@ -303,7 +304,7 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 
-			if (this.result && !this.isCompacted()) {
+			if (this.result && (!this.isCompacted() || this.result.isError)) {
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
 					const component = this.createResultFallback();

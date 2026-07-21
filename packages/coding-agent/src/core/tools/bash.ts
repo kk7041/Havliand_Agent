@@ -172,6 +172,8 @@ export interface BashToolOptions {
 }
 
 const BASH_PREVIEW_LINES = 5;
+const BASH_COLLAPSED_COMMAND_LINES = 3;
+const BASH_COMPACT_COMMAND_CHARS = 120;
 const BASH_UPDATE_THROTTLE_MS = 100;
 
 type BashRenderState = {
@@ -198,11 +200,45 @@ function formatDuration(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
+function truncateCommandLine(line: string, maxChars: number): string {
+	return line.length > maxChars ? `${line.slice(0, maxChars - 3)}...` : line;
+}
+
+function formatBashCommandPreview(command: string, options: { expanded: boolean; compacted: boolean }): string {
+	if (options.expanded) {
+		return command;
+	}
+
+	const lines = command.split("\n");
+	if (options.compacted) {
+		const firstLine = truncateCommandLine(lines[0] ?? "", BASH_COMPACT_COMMAND_CHARS);
+		return lines.length > 1 ? `${firstLine} ${theme.fg("muted", `(+${lines.length - 1} lines)`)}` : firstLine;
+	}
+
+	if (lines.length <= BASH_COLLAPSED_COMMAND_LINES) {
+		return command;
+	}
+
+	const hidden = lines.length - BASH_COLLAPSED_COMMAND_LINES;
+	return [
+		...lines.slice(0, BASH_COLLAPSED_COMMAND_LINES),
+		`${theme.fg("muted", `... (${hidden} more command lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+	].join("\n");
+}
+
+function formatBashCall(
+	args: { command?: string; timeout?: number } | undefined,
+	options: { expanded: boolean; compacted: boolean },
+): string {
 	const command = str(args?.command);
 	const timeout = args?.timeout as number | undefined;
 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
-	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
+	const commandDisplay =
+		command === null
+			? invalidArgText(theme)
+			: command
+				? formatBashCommandPreview(command, options)
+				: theme.fg("toolOutput", "...");
 	return `${toolHeader("Bash", theme, { state: "running" })} ${theme.fg("accent", commandDisplay)}${timeoutSuffix}`;
 }
 
@@ -434,7 +470,7 @@ export function createBashToolDefinition(
 				state.endedAt = undefined;
 			}
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatBashCall(args));
+			text.setText(formatBashCall(args, { expanded: context.expanded, compacted: context.compacted }));
 			return text;
 		},
 		renderResult(result, options, _theme, context) {

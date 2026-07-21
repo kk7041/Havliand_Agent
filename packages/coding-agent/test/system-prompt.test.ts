@@ -54,7 +54,7 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain(
-				"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
+				"- When reading havliand_agent docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
 			);
 		});
 	});
@@ -83,6 +83,45 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).not.toContain("dynamic_tool");
+		});
+	});
+
+	describe("subagent delegation", () => {
+		test("includes delegation guidance when subagent is selected and agents are available", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: ["read", "subagent"],
+				availableAgents: "OG (builtin): Research; Angel (builtin): Execute",
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain("Delegating to subagents:");
+			expect(prompt).toContain("Available agents: OG (builtin): Research; Angel (builtin): Execute");
+			expect(prompt).toContain("chain mode");
+		});
+
+		test("omits delegation guidance when subagent is not selected", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: ["read"],
+				availableAgents: "OG (builtin): Research",
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).not.toContain("Delegating to subagents:");
+		});
+
+		test("omits empty delegation guidance", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: ["subagent"],
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).not.toContain("Delegating to subagents:");
 		});
 	});
 

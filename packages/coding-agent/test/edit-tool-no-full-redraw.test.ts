@@ -76,7 +76,7 @@ describe("edit tool TUI rendering", () => {
 		await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 	});
 
-	it("renders the large diff in the call preview and does not full-redraw when the result settles", async () => {
+	it("renders a collapsed large diff preview and does not full-redraw when the result settles", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "pi-edit-redraw-"));
 		tempDirs.push(dir);
 		const filePath = join(dir, "large-edit.txt");
@@ -125,7 +125,8 @@ describe("edit tool TUI rendering", () => {
 			() => tui.requestRender(true),
 		);
 		expect(callOnlyRender).toContain("edit");
-		expect(callOnlyRender).toContain("line 950 changed");
+		expect(callOnlyRender).not.toContain("line 950 changed");
+		expect(callOnlyRender).toContain("to expand");
 
 		const redrawsBeforeResult = tui.fullRedraws;
 		const clearsBeforeResult = terminal.fullClearCount;
@@ -145,8 +146,12 @@ describe("edit tool TUI rendering", () => {
 
 		const settledRender = component.render(80).join("\n");
 		expect(settledRender).toContain("line 50 changed");
-		expect(settledRender).toContain("line 950 changed");
+		expect(settledRender).not.toContain("line 950 changed");
 		expect(settledRender).not.toContain("Successfully replaced");
+
+		component.setExpanded(true);
+		const expandedRender = component.render(80).join("\n");
+		expect(expandedRender).toContain("line 950 changed");
 	});
 
 	it("reconstructs the boxed preview from a settled result without argsComplete", async () => {
@@ -195,7 +200,12 @@ describe("edit tool TUI rendering", () => {
 
 		const rendered = component.render(80).join("\n");
 		expect(rendered).toContain("line 50 changed");
-		expect(rendered).toContain("line 150 changed");
+		expect(rendered).not.toContain("line 150 changed");
+		expect(rendered).toContain("to expand");
+
+		component.setExpanded(true);
+		const expanded = component.render(80).join("\n");
+		expect(expanded).toContain("line 150 changed");
 	});
 
 	it("shows a preflight error without rendering a diff when the edits do not apply", async () => {

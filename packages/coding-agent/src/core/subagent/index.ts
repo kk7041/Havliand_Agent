@@ -22,10 +22,11 @@ import { StringEnum } from "@havliand_agent/ai";
 import { Container, Markdown, Spacer, Text } from "@havliand_agent/tui";
 import { Type } from "typebox";
 import { getAgentDir } from "../../config.ts";
-import { getMarkdownTheme, type ThemeColor } from "../../modes/interactive/theme/theme.ts";
+import type { DeepAgentPanelOptions } from "../../modes/interactive/components/deepagent-panel.ts";
+import { getMarkdownTheme, type ThemeColor, theme } from "../../modes/interactive/theme/theme.ts";
 import type { ExtensionAPI, ToolDefinition } from "../extensions/types.ts";
 import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.ts";
 
 export type { AgentConfig, AgentDiscoveryResult, AgentScope } from "./agents.ts";
 export { discoverAgents, formatAgentList } from "./agents.ts";
@@ -136,7 +137,7 @@ function formatToolCall(
 	}
 }
 
-interface UsageStats {
+export interface UsageStats {
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -146,7 +147,7 @@ interface UsageStats {
 	turns: number;
 }
 
-interface SingleResult {
+export interface SingleResult {
 	agent: string;
 	agentSource: "builtin" | "user" | "project" | "unknown";
 	task: string;
@@ -154,13 +155,15 @@ interface SingleResult {
 	messages: Message[];
 	stderr: string;
 	usage: UsageStats;
+	startedAt: number;
+	finishedAt?: number;
 	model?: string;
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
 }
 
-interface SubagentDetails {
+export interface SubagentDetails {
 	mode: "single" | "parallel" | "chain";
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
@@ -227,6 +230,56 @@ function getDisplayItems(messages: Message[]): DisplayItem[] {
 	return items;
 }
 
+function getLastToolCall(messages: Message[]): Extract<DisplayItem, { type: "toolCall" }> | undefined {
+	const items = getDisplayItems(messages);
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.type === "toolCall") return item;
+	}
+	return undefined;
+}
+
+function formatElapsed(startedAt: number, finishedAt: number | undefined, now: number): string {
+	const end = finishedAt ?? now;
+	const elapsedSeconds = Math.max(0, (end - startedAt) / 1000);
+	return elapsedSeconds < 10 ? `${elapsedSeconds.toFixed(1)}s` : `${Math.round(elapsedSeconds)}s`;
+}
+
+export function formatSubagentPanelOptions(details: SubagentDetails, now = Date.now()): DeepAgentPanelOptions {
+	const running = details.results.filter((r) => r.exitCode === -1).length;
+	const done = details.results.length - running;
+	const failed = details.results.filter((r) => r.exitCode !== -1 && isFailedResult(r)).length;
+	const rows = details.results.map((result) => {
+		const failedResult = isFailedResult(result);
+		const status =
+			result.exitCode === -1
+				? themeFgForPanel("warning", "● RUN ")
+				: failedResult
+					? themeFgForPanel("error", "✗ ERR ")
+					: themeFgForPanel("success", "✓ DONE");
+		const step = result.step ? themeFgForPanel("dim", `#${result.step} `) : "";
+		const source = result.agentSource === "builtin" ? "" : themeFgForPanel("dim", ` (${result.agentSource})`);
+		const toolCall = getLastToolCall(result.messages);
+		const action = toolCall
+			? formatToolCall(toolCall.name, toolCall.args, themeFgForPanel)
+			: themeFgForPanel("dim", result.exitCode === -1 ? "starting..." : "no tool calls");
+		const elapsed = themeFgForPanel("dim", formatElapsed(result.startedAt, result.finishedAt, now));
+		const usage =
+			result.exitCode === -1 ? "" : themeFgForPanel("dim", ` ${formatUsageStats(result.usage, result.model)}`);
+		return `${status} ${step}${themeFgForPanel("toolTitle", result.agent)}${source} ${action} ${elapsed}${usage}`;
+	});
+
+	return {
+		title: "subagents",
+		subtitle: `mode: ${details.mode}   live: ${running}   done: ${done}${failed ? `   err: ${failed}` : ""}`,
+		rows,
+	};
+}
+
+function themeFgForPanel(color: ThemeColor, text: string): string {
+	return theme.fg(color, text);
+}
+
 async function mapWithConcurrencyLimit<TIn, TOut>(
 	items: TIn[],
 	concurrency: number,
@@ -290,6 +343,7 @@ async function runSingleAgent(
 
 	if (!agent) {
 		const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
+		const now = Date.now();
 		return {
 			agent: agentName,
 			agentSource: "unknown",
@@ -298,6 +352,8 @@ async function runSingleAgent(
 			messages: [],
 			stderr: `Unknown agent: "${agentName}". Available agents: ${available}.`,
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+			startedAt: now,
+			finishedAt: now,
 			step,
 		};
 	}
@@ -317,6 +373,7 @@ async function runSingleAgent(
 		messages: [],
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+		startedAt: Date.now(),
 		model: agent.model,
 		step,
 	};
@@ -462,6 +519,7 @@ async function runSingleAgent(
 		});
 
 		currentResult.exitCode = exitCode;
+		currentResult.finishedAt = Date.now();
 		if (wasAborted) throw new Error("Subagent was aborted");
 		return currentResult;
 	} finally {
@@ -509,13 +567,21 @@ const SubagentParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
 
-export function createSubagentToolDefinition(): ToolDefinition<typeof SubagentParams, SubagentDetails> {
+export function createSubagentToolDefinition(
+	cwd = process.cwd(),
+): ToolDefinition<typeof SubagentParams, SubagentDetails> {
+	const availableAgents = formatAgentList(discoverAgents(cwd, "user").agents, 10);
+	const agentListText =
+		availableAgents.remaining > 0
+			? `${availableAgents.text}; +${availableAgents.remaining} more`
+			: availableAgents.text;
 	return {
 		name: "subagent",
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
+			`Available agents: ${agentListText}.`,
 			'Built-in agents include "OG" and "Angel" and cannot be overridden by custom agents.',
 			`Custom user agents are loaded from ${path.join(getAgentDir(), "agents")}.`,
 			'To include project-local custom agents, set agentScope: "both" (or "project").',
@@ -659,6 +725,7 @@ export function createSubagentToolDefinition(): ToolDefinition<typeof SubagentPa
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+						startedAt: Date.now(),
 					};
 				}
 
