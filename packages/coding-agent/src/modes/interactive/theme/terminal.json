@@ -4,9 +4,10 @@
 	"vars": {
 		"accent": "#33ff66",
 		"command": "#00aa44",
+		"amber": "#ffcc66",
 		"text": "#d7ffd7",
-		"muted": "#74aa74",
-		"dim": "#3c6b3c"
+		"muted": "#83b891",
+		"dim": "#496b52"
 	},
 	"colors": {
 		"accent": "accent",
@@ -15,7 +16,7 @@
 		"borderMuted": "#204820",
 		"success": "accent",
 		"error": "#ff5f5f",
-		"warning": "#d7ff5f",
+		"warning": "amber",
 		"muted": "muted",
 		"dim": "dim",
 		"text": "text",
@@ -30,7 +31,7 @@
 		"toolSuccessBg": "#102916",
 		"toolErrorBg": "#2a1616",
 		"toolTitle": "text",
-		"toolOutput": "muted",
+		"toolOutput": "#a7d7ae",
 		"mdHeading": "accent",
 		"mdLink": "#4ea3ff",
 		"mdLinkUrl": "#4ea3ff",
@@ -43,7 +44,7 @@
 		"mdListBullet": "accent",
 		"toolDiffAdded": "accent",
 		"toolDiffRemoved": "#ff5f5f",
-		"toolDiffContext": "muted",
+		"toolDiffContext": "#83b891",
 		"syntaxComment": "#508050",
 		"syntaxKeyword": "accent",
 		"syntaxFunction": "#aaffaa",

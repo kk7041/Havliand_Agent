@@ -100,7 +100,7 @@ import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader }
 import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
-import { createSubagentToolDefinition } from "./subagent/index.ts";
+import { createSubagentToolDefinition, discoverAgents, formatAgentList } from "./subagent/index.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
 import { createAllToolDefinitions } from "./tools/index.ts";
@@ -1029,6 +1029,11 @@ export class AgentSession {
 			loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : undefined;
 		const loadedSkills = this._resourceLoader.getSkills().skills;
 		const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
+		let availableAgents: string | undefined;
+		if (validToolNames.includes("subagent")) {
+			const formatted = formatAgentList(discoverAgents(this._cwd, "user").agents, 10);
+			availableAgents = formatted.remaining > 0 ? `${formatted.text}; +${formatted.remaining} more` : formatted.text;
+		}
 
 		this._baseSystemPromptOptions = {
 			cwd: this._cwd,
@@ -1039,6 +1044,7 @@ export class AgentSession {
 			selectedTools: validToolNames,
 			toolSnippets,
 			promptGuidelines,
+			availableAgents,
 		};
 		return buildSystemPrompt(this._baseSystemPromptOptions);
 	}
@@ -2541,7 +2547,7 @@ export class AgentSession {
 						read: { autoResizeImages },
 						bash: { commandPrefix: shellCommandPrefix, shellPath },
 					}),
-					subagent: createSubagentToolDefinition(),
+					subagent: createSubagentToolDefinition(this._cwd),
 				};
 
 		this._baseToolDefinitions = new Map(

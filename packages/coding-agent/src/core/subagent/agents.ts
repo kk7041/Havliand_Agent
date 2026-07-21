@@ -29,6 +29,7 @@ const BUILTIN_AGENTS: AgentConfig[] = [
 		name: "OG",
 		description: "Research and fact-finding subagent that investigates, verifies, and explains problems objectively",
 		tools: ["read", "grep", "find", "ls", "bash"],
+		model: process.env.HAVLIAND_SUBAGENT_OG_MODEL ?? "aicodewith-openai/deepseek-v4-pro",
 		systemPrompt: `You are OG, the research and fact-finding subagent for havliand_agent.
 
 Hierarchy:
@@ -69,6 +70,7 @@ Output format:
 	{
 		name: "Angel",
 		description: "Execution lead subagent that implements delegated work under havliand_agent direction",
+		model: process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL ?? "aicodewith-openai/gpt-5.5",
 		systemPrompt: `You are Angel, the execution lead subagent for havliand_agent.
 
 Hierarchy:

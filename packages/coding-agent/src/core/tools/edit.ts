@@ -4,6 +4,7 @@ import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { type Static, Type } from "typebox";
 import { renderDiff } from "../../modes/interactive/components/diff.ts";
+import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import {
@@ -29,6 +30,8 @@ type EditPreview = EditDiffResult | EditDiffError;
 type EditRenderState = {
 	callComponent?: EditCallRenderComponent;
 };
+
+const EDIT_COLLAPSED_DIFF_LINES = 15;
 
 const replaceEditSchema = Type.Object(
 	{
@@ -243,11 +246,37 @@ function getEditHeaderBg(
 	return (text: string) => theme.bg("toolPendingBg", text);
 }
 
+function formatEditPreviewDiff(
+	diff: string,
+	options: { expanded: boolean; compacted: boolean; filePath?: string },
+): string | undefined {
+	if (options.compacted && !options.expanded) {
+		return undefined;
+	}
+
+	const rendered = renderDiff(diff, { filePath: options.filePath });
+	if (options.expanded) {
+		return rendered;
+	}
+
+	const lines = rendered.split("\n");
+	if (lines.length <= EDIT_COLLAPSED_DIFF_LINES) {
+		return rendered;
+	}
+
+	const hidden = lines.length - EDIT_COLLAPSED_DIFF_LINES;
+	return [
+		...lines.slice(0, EDIT_COLLAPSED_DIFF_LINES),
+		keyHint("app.tools.expand", `to expand (${hidden} more lines, ${lines.length} total)`),
+	].join("\n");
+}
+
 function buildEditCallComponent(
 	component: EditCallRenderComponent,
 	args: RenderableEditArgs | undefined,
 	theme: Theme,
 	cwd: string,
+	options: { expanded: boolean; compacted: boolean },
 ): EditCallRenderComponent {
 	component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
 	component.clear();
@@ -258,7 +287,16 @@ function buildEditCallComponent(
 	}
 
 	const body =
-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
+		"error" in component.preview
+			? theme.fg("error", component.preview.error)
+			: formatEditPreviewDiff(component.preview.diff, {
+					expanded: options.expanded,
+					compacted: options.compacted,
+					filePath: str(args?.file_path ?? args?.path) ?? undefined,
+				});
+	if (!body) {
+		return component;
+	}
 	component.addChild(new Spacer(1));
 	component.addChild(new Text(body, 0, 0));
 	return component;
@@ -385,7 +423,10 @@ export function createEditToolDefinition(
 				});
 			}
 
-			return buildEditCallComponent(component, args, theme, context.cwd);
+			return buildEditCallComponent(component, args, theme, context.cwd, {
+				expanded: context.expanded,
+				compacted: context.compacted,
+			});
 		},
 		renderResult(result, _options, theme, context) {
 			const callComponent = context.state.callComponent;
@@ -415,6 +456,7 @@ export function createEditToolDefinition(
 						context.args as RenderableEditArgs | undefined,
 						theme,
 						context.cwd,
+						{ expanded: context.expanded, compacted: context.compacted },
 					);
 				}
 			}

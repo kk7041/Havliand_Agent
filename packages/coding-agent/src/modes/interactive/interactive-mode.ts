@@ -83,6 +83,7 @@ import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../cor
 import { type SessionEntry, SessionManager, sessionEntryToContextMessages } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
+import { formatSubagentPanelOptions, type SubagentDetails } from "../../core/subagent/index.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
@@ -91,6 +92,7 @@ import { copyToClipboard, readClipboardText } from "../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
 import { parseGitUrl } from "../../utils/git.ts";
 import { getHavliandAgentUserAgent } from "../../utils/havliand_agent-user-agent.ts";
+import { formatUserMessageForDisplay } from "../../utils/image-labels.ts";
 import { getCwdRelativePath } from "../../utils/paths.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
@@ -298,6 +300,7 @@ export class InteractiveMode {
 	private loadedResourcesContainer: Container;
 	private chatContainer: Container;
 	private pendingMessagesContainer: Container;
+	private subagentPanelContainer: Container;
 	private statusContainer: Container;
 	private defaultEditor: CustomEditor;
 	private editor: EditorComponent;
@@ -339,6 +342,8 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+	private subagentPanel: DeepAgentPanel | undefined = undefined;
+	private subagentDetailsByToolCall = new Map<string, SubagentDetails>();
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
@@ -435,6 +440,7 @@ export class InteractiveMode {
 		this.loadedResourcesContainer = new Container();
 		this.chatContainer = new Container();
 		this.pendingMessagesContainer = new Container();
+		this.subagentPanelContainer = new Container();
 		this.statusContainer = new Container();
 		this.widgetContainerAbove = new Container();
 		this.widgetContainerBelow = new Container();
@@ -689,6 +695,7 @@ export class InteractiveMode {
 
 		this.ui.addChild(this.chatContainer);
 		this.ui.addChild(this.pendingMessagesContainer);
+		this.ui.addChild(this.subagentPanelContainer);
 		this.ui.addChild(this.statusContainer);
 		this.renderWidgets(); // Initialize with default spacer
 		this.ui.addChild(this.widgetContainerAbove);
@@ -1756,7 +1763,41 @@ export class InteractiveMode {
 		this.streamingComponent = undefined;
 		this.streamingMessage = undefined;
 		this.pendingTools.clear();
+		this.clearSubagentPanel();
 		this.renderInitialMessages();
+	}
+
+	private clearSubagentPanel(): void {
+		this.subagentDetailsByToolCall.clear();
+		this.subagentPanel = undefined;
+		this.subagentPanelContainer.clear();
+	}
+
+	private updateSubagentPanel(toolCallId: string, details: unknown): void {
+		if (!details || typeof details !== "object" || !Array.isArray((details as SubagentDetails).results)) {
+			return;
+		}
+		this.subagentDetailsByToolCall.set(toolCallId, details as SubagentDetails);
+		const mergedDetails = this.mergeSubagentDetails();
+		const options = formatSubagentPanelOptions(mergedDetails);
+		if (!this.subagentPanel) {
+			this.subagentPanel = new DeepAgentPanel(options);
+			this.subagentPanelContainer.clear();
+			this.subagentPanelContainer.addChild(this.subagentPanel);
+		} else {
+			this.subagentPanel.setOptions(options);
+		}
+	}
+
+	private mergeSubagentDetails(): SubagentDetails {
+		const details = Array.from(this.subagentDetailsByToolCall.values());
+		const first = details[0]!;
+		return {
+			mode: details.length === 1 ? first.mode : "parallel",
+			agentScope: first.agentScope,
+			projectAgentsDir: first.projectAgentsDir,
+			results: details.flatMap((detail) => detail.results),
+		};
 	}
 
 	/**
@@ -2834,6 +2875,7 @@ export class InteractiveMode {
 		switch (event.type) {
 			case "agent_start":
 				this.pendingTools.clear();
+				this.clearSubagentPanel();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
 				}
@@ -3000,6 +3042,9 @@ export class InteractiveMode {
 				const component = this.pendingTools.get(event.toolCallId);
 				if (component) {
 					component.updateResult({ ...event.partialResult, isError: false }, true);
+					if (event.toolName === "subagent") {
+						this.updateSubagentPanel(event.toolCallId, event.partialResult.details);
+					}
 					this.ui.requestRender();
 				}
 				break;
@@ -3009,6 +3054,9 @@ export class InteractiveMode {
 				const component = this.pendingTools.get(event.toolCallId);
 				if (component) {
 					component.updateResult({ ...event.result, isError: event.isError });
+					if (event.toolName === "subagent") {
+						this.updateSubagentPanel(event.toolCallId, event.result.details);
+					}
 					this.pendingTools.delete(event.toolCallId);
 					this.ui.requestRender();
 				}
@@ -3119,12 +3167,7 @@ export class InteractiveMode {
 
 	/** Extract text content from a user message */
 	private getUserMessageText(message: Message): string {
-		if (message.role !== "user") return "";
-		const textBlocks =
-			typeof message.content === "string"
-				? [{ type: "text", text: message.content }]
-				: message.content.filter((c: { type: string }) => c.type === "text");
-		return textBlocks.map((c) => (c as { text: string }).text).join("");
+		return formatUserMessageForDisplay(message);
 	}
 
 	/**

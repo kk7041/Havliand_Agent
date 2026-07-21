@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { getReadmePath } from "../src/config.ts";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import { type BashOperations, createBashToolDefinition } from "../src/core/tools/bash.ts";
+import { createEditToolDefinition } from "../src/core/tools/edit.ts";
 import { createReadTool, createReadToolDefinition } from "../src/core/tools/read.ts";
 import { createWriteToolDefinition } from "../src/core/tools/write.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
@@ -189,6 +190,48 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toMatch(/line-4000[^\n]*\n[^\S\n]*\n[^\S\n]*\n \[Full output:/);
 		expect(rendered).toContain("Truncated: showing 2000 of 4000 lines");
 		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
+	});
+
+	test("collapses multiline bash commands until expanded", () => {
+		const command = ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n");
+		const component = new ToolExecutionComponent(
+			"bash",
+			"tool-bash-command-collapse",
+			{ command },
+			{},
+			createBashToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		const collapsed = stripAnsi(component.render(120).join("\n"));
+		expect(collapsed).toContain("line 1");
+		expect(collapsed).toContain("line 3");
+		expect(collapsed).not.toContain("line 5");
+		expect(collapsed).toContain("more command lines");
+		expect(collapsed).toContain("to expand");
+
+		component.setExpanded(true);
+		const expanded = stripAnsi(component.render(120).join("\n"));
+		expect(expanded).toContain("line 5");
+	});
+
+	test("compacted mode keeps bash commands to one display line", () => {
+		const command = ["a".repeat(160), "line 2", "line 3"].join("\n");
+		const component = new ToolExecutionComponent(
+			"bash",
+			"tool-bash-command-compacted",
+			{ command },
+			{ toolWidgetMode: "compacted" },
+			createBashToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		const rendered = stripAnsi(component.render(200).join("\n"));
+		expect(rendered).toContain("...");
+		expect(rendered).toContain("(+2 lines)");
+		expect(rendered).not.toContain("line 2");
 	});
 
 	test("does not duplicate built-in headers when passed the active built-in definition", () => {
@@ -446,6 +489,68 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("Read");
 		expect(rendered).toContain("notes.txt");
 		expect(rendered).not.toContain("hidden content");
+	});
+
+	test("collapses edit diff previews until expanded", () => {
+		const diff = Array.from({ length: 30 }, (_, i) => `+ ${i + 1} changed line ${i + 1}`).join("\n");
+		const component = new ToolExecutionComponent(
+			"edit",
+			"tool-edit-collapsed",
+			{ path: "notes.txt", edits: [{ oldText: "before", newText: "after" }] },
+			{},
+			createEditToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult({ content: [{ type: "text", text: "ok" }], details: { diff, patch: "" }, isError: false });
+
+		const collapsed = stripAnsi(component.render(120).join("\n"));
+		expect(collapsed).toContain("changed line 1");
+		expect(collapsed).not.toContain("changed line 30");
+		expect(collapsed).toContain("to expand");
+		expect(collapsed).toContain("15 more lines");
+
+		component.setExpanded(true);
+		const expanded = stripAnsi(component.render(120).join("\n"));
+		expect(expanded).toContain("changed line 30");
+	});
+
+	test("compacted mode keeps successful edit diff previews hidden", () => {
+		const diff = Array.from({ length: 30 }, (_, i) => `+ ${i + 1} changed line ${i + 1}`).join("\n");
+		const component = new ToolExecutionComponent(
+			"edit",
+			"tool-edit-compacted",
+			{ path: "notes.txt", edits: [{ oldText: "before", newText: "after" }] },
+			{ toolWidgetMode: "compacted" },
+			createEditToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult({ content: [{ type: "text", text: "ok" }], details: { diff, patch: "" }, isError: false });
+
+		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("Edit");
+		expect(rendered).toContain("notes.txt");
+		expect(rendered).not.toContain("changed line 1");
+	});
+
+	test("edit errors remain visible while compacted", () => {
+		const component = new ToolExecutionComponent(
+			"edit",
+			"tool-edit-error-compacted",
+			{ path: "notes.txt", edits: [{ oldText: "missing", newText: "after" }] },
+			{ toolWidgetMode: "compacted" },
+			createEditToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{ content: [{ type: "text", text: "Could not find text to replace" }], details: undefined, isError: true },
+			false,
+		);
+
+		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("Could not find text to replace");
 	});
 
 	for (const scenario of [
