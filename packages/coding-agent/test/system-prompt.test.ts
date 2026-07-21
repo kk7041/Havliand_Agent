@@ -96,7 +96,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Delegating to subagents:");
+			expect(prompt).toContain("Delegating to subagents (MANDATORY):");
+			expect(prompt).toContain("You MUST delegate research");
 			expect(prompt).toContain("Available agents: OG (builtin): Research; Angel (builtin): Execute");
 			expect(prompt).toContain("chain mode");
 		});
@@ -110,7 +111,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).not.toContain("Delegating to subagents:");
+			expect(prompt).not.toContain("Delegating to subagents (MANDATORY):");
 		});
 
 		test("omits empty delegation guidance", () => {
@@ -121,7 +122,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).not.toContain("Delegating to subagents:");
+			expect(prompt).not.toContain("Delegating to subagents (MANDATORY):");
 		});
 	});
 

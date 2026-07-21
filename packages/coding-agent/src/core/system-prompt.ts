@@ -32,13 +32,15 @@ function formatSubagentDelegationSection(availableAgents: string | undefined): s
 	}
 	return `
 
-Delegating to subagents:
+Delegating to subagents (MANDATORY):
 - You have a \`subagent\` tool that runs specialized agents in isolated context windows.
 - Available agents: ${availableAgents}
-- Delegate fact-finding, investigation, and root-cause analysis to research agents such as OG.
-- Delegate implementation, edits, scripted changes, and verification support to execution agents such as Angel.
-- Use chain mode to pass investigation findings with \`{previous}\` into a follow-up implementation task.
-- Prefer delegation when a task is self-contained and benefits from isolated context; keep orchestration and final validation yourself.`;
+- You MUST delegate research, investigation, fact-finding, web/documentation lookup, and root-cause analysis to a research agent such as OG. Do NOT do this yourself with your own tools.
+- You MUST delegate implementation, code edits, and scripted changes to an execution agent such as Angel. Do NOT do this yourself with your own tools.
+- Before starting any multi-step research or implementation, your FIRST action must be a \`subagent\` call, not a direct \`bash\`/\`grep\`/\`read\`/web request.
+- Use chain mode to pass investigation findings with \`{previous}\` from a research agent into a follow-up implementation task.
+- Narrow exceptions you MAY handle yourself: reading a single named file the user pointed to, one quick lookup to decide which agent to delegate to, and final validation/synthesis of subagent results. Everything else is delegated.
+- Your role is orchestration and final validation: decide the plan, delegate the work, verify the results.`;
 }
 
 /** Build the system prompt with tools, guidelines, and context */
