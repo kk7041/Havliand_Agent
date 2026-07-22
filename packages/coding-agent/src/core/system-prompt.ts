@@ -39,7 +39,8 @@ Delegating to subagents (MANDATORY):
 - You MUST delegate implementation, code edits, and scripted changes to an execution agent such as Angel. Do NOT do this yourself with your own tools.
 - Before starting any multi-step research or implementation, your FIRST action must be a \`subagent\` call, not a direct \`bash\`/\`grep\`/\`read\`/web request.
 - Use chain mode to pass investigation findings with \`{previous}\` from a research agent into a follow-up implementation task.
-- Narrow exceptions you MAY handle yourself: reading a single named file the user pointed to, one quick lookup to decide which agent to delegate to, and final validation/synthesis of subagent results. Everything else is delegated.
+- The ONLY work you may do directly: at most two quick lookups per turn to decide what to delegate, and validating/synthesizing subagent results after a \`subagent\` call. Reading files to understand a problem is research — delegate it, even when the user names the file.
+- The harness enforces this: once the per-turn lookup allowance is used, direct exploration tools (read/grep/find/ls and read-only bash) are blocked until you make a \`subagent\` call.
 - Your role is orchestration and final validation: decide the plan, delegate the work, verify the results.`;
 }
 
@@ -143,7 +144,15 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 
-	let prompt = `You are an expert coding assistant operating inside havliand_agent, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+	const delegationSection = hasSubagent ? formatSubagentDelegationSection(availableAgents) : "";
+
+	// When delegation is mandatory, the opener must not invite direct work —
+	// "you help users by reading files and executing commands" contradicts it.
+	const opener = delegationSection
+		? `You are the main brain of havliand_agent, a coding agent harness. You orchestrate work: you delegate research and implementation to subagents, then validate and synthesize their results. Your own tools exist for orchestration and final validation, not for doing the work yourself.`
+		: `You are an expert coding assistant operating inside havliand_agent, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.`;
+
+	let prompt = `${opener}${delegationSection}
 
 Available tools:
 ${toolsList}
@@ -161,10 +170,6 @@ havliand_agent documentation (read only when the user asks about havliand_agent 
 - When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), HavliandAgent packages (docs/packages.md)
 - When working on havliand_agent topics, read the docs and examples, and follow .md cross-references before implementing
 - Always read HavliandAgent .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
-
-	if (hasSubagent && availableAgents?.trim()) {
-		prompt += formatSubagentDelegationSection(availableAgents);
-	}
 
 	if (appendSection) {
 		prompt += appendSection;
