@@ -3,7 +3,9 @@ import {
 	DEFAULT_EXPLORATION_ALLOWANCE,
 	DelegationGuard,
 	isDelegationGuardDisabledByEnv,
+	isDelegationGuardDisabledForProcess,
 	isExplorationCall,
+	isSubagentProcess,
 } from "../src/core/subagent/delegation-guard.ts";
 
 describe("DelegationGuard", () => {
@@ -79,5 +81,27 @@ describe("isDelegationGuardDisabledByEnv", () => {
 		expect(isDelegationGuardDisabledByEnv({ HAVLIAND_DELEGATION_GUARD: "0" })).toBe(true);
 		expect(isDelegationGuardDisabledByEnv({ HAVLIAND_DELEGATION_GUARD: "false" })).toBe(true);
 		expect(isDelegationGuardDisabledByEnv({ HAVLIAND_DELEGATION_GUARD: "disabled" })).toBe(true);
+	});
+});
+
+describe("isSubagentProcess", () => {
+	test("detects only explicit child process markers", () => {
+		expect(isSubagentProcess({})).toBe(false);
+		expect(isSubagentProcess({ HAVLIAND_IS_SUBAGENT: "0" })).toBe(false);
+		expect(isSubagentProcess({ HAVLIAND_IS_SUBAGENT: "1" })).toBe(true);
+		expect(isSubagentProcess({ HAVLIAND_IS_SUBAGENT: "true" })).toBe(true);
+		expect(isSubagentProcess({ HAVLIAND_IS_SUBAGENT: "on" })).toBe(true);
+		expect(isSubagentProcess({ HAVLIAND_IS_SUBAGENT: "yes" })).toBe(true);
+	});
+});
+
+describe("isDelegationGuardDisabledForProcess", () => {
+	test("disables the guard inside marked subagent child processes", () => {
+		expect(
+			isDelegationGuardDisabledForProcess({
+				HAVLIAND_DELEGATION_GUARD: "on",
+				HAVLIAND_IS_SUBAGENT: "1",
+			}),
+		).toBe(true);
 	});
 });
