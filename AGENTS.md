@@ -121,6 +121,16 @@ Attribution:
 
 **Lockstep versioning**: all packages share one version; every release updates all together. `patch` = fixes + additions, `minor` = breaking changes. No major releases.
 
+**Npm publishing trigger**: ordinary pushes to `main` do not publish npm packages. Npm publishing is triggered only by pushing a `v*` tag. Use the release script below to bump versions, commit, tag, push `main`, and push the tag. The tag push triggers `.github/workflows/build-binaries.yml`, which publishes through npm trusted publishing.
+
+Trusted publishing configuration for each npm package (`@havliand_agent/ai`, `@havliand_agent/agent-core`, `@havliand_agent/tui`, `@havliand_agent/coding-agent`):
+
+- Provider: GitHub Actions
+- Organization or user: `kk7041`
+- Repository: `Havliand_Agent`
+- Workflow filename: `build-binaries.yml`
+- Environment name: `npm-publish`
+
 1. **Update CHANGELOGs**: ask the user whether they ran the `/cl` prompt on the latest commit on `main`. If not, they must run `/cl` first to audit and update each package's `[Unreleased]` section before releasing.
 
 2. **Local smoke test**: build an unpublished release and smoke test from outside the repo (so it can't resolve workspace files):
