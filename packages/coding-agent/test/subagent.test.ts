@@ -8,6 +8,7 @@ import {
 	discoverAgents,
 	formatSubagentPanelOptions,
 	type SubagentDetails,
+	writeUserAgentModelOverride,
 } from "../src/core/subagent/index.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
@@ -16,6 +17,8 @@ describe("built-in subagents", () => {
 	let agentDir: string;
 	let cwd: string;
 	let previousAgentDir: string | undefined;
+	let previousOgModel: string | undefined;
+	let previousAngelModel: string | undefined;
 
 	beforeEach(() => {
 		tempDir = join(tmpdir(), `subagent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -24,7 +27,11 @@ describe("built-in subagents", () => {
 		mkdirSync(agentDir, { recursive: true });
 		mkdirSync(cwd, { recursive: true });
 		previousAgentDir = process.env[ENV_AGENT_DIR];
+		previousOgModel = process.env.HAVLIAND_SUBAGENT_OG_MODEL;
+		previousAngelModel = process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL;
 		process.env[ENV_AGENT_DIR] = agentDir;
+		delete process.env.HAVLIAND_SUBAGENT_OG_MODEL;
+		delete process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL;
 	});
 
 	afterEach(() => {
@@ -32,6 +39,16 @@ describe("built-in subagents", () => {
 			delete process.env[ENV_AGENT_DIR];
 		} else {
 			process.env[ENV_AGENT_DIR] = previousAgentDir;
+		}
+		if (previousOgModel === undefined) {
+			delete process.env.HAVLIAND_SUBAGENT_OG_MODEL;
+		} else {
+			process.env.HAVLIAND_SUBAGENT_OG_MODEL = previousOgModel;
+		}
+		if (previousAngelModel === undefined) {
+			delete process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL;
+		} else {
+			process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL = previousAngelModel;
 		}
 		rmSync(tempDir, { recursive: true, force: true });
 	});
@@ -41,8 +58,8 @@ describe("built-in subagents", () => {
 
 		expect(agents.find((agent) => agent.name === "OG")?.source).toBe("builtin");
 		expect(agents.find((agent) => agent.name === "Angel")?.source).toBe("builtin");
-		expect(agents.find((agent) => agent.name === "OG")?.model).toBe("aicodewith-openai/deepseek-v4-pro");
-		expect(agents.find((agent) => agent.name === "Angel")?.model).toBe("aicodewith-openai/gpt-5.5");
+		expect(agents.find((agent) => agent.name === "OG")?.model).toBeUndefined();
+		expect(agents.find((agent) => agent.name === "Angel")?.model).toBeUndefined();
 	});
 
 	it("lists built-in and user agents in the subagent tool description", () => {
@@ -64,7 +81,7 @@ Review code.`,
 		expect(tool.description).toContain("reviewer (user): user reviewer");
 	});
 
-	it("does not allow user or project agents to override built-in OG and Angel", () => {
+	it("allows user and project agents to override built-in OG and Angel field-by-field", () => {
 		const userAgentsDir = join(agentDir, "agents");
 		const projectAgentsDir = join(cwd, ".havliand_agent", "agents");
 		mkdirSync(userAgentsDir, { recursive: true });
@@ -74,23 +91,93 @@ Review code.`,
 			join(userAgentsDir, "OG.md"),
 			`---
 name: OG
-description: user override
+model: deepseek/deepseek-v4-pro
 ---
-User override.`,
+`,
 		);
 		writeFileSync(
 			join(projectAgentsDir, "Angel.md"),
 			`---
 name: Angel
 description: project override
+tools: read,grep
 ---
 Project override.`,
 		);
 
 		const { agents } = discoverAgents(cwd, "both");
+		const og = agents.find((agent) => agent.name === "OG");
+		const angel = agents.find((agent) => agent.name === "Angel");
 
-		expect(agents.find((agent) => agent.name === "OG")?.source).toBe("builtin");
-		expect(agents.find((agent) => agent.name === "Angel")?.source).toBe("builtin");
+		expect(og?.source).toBe("user");
+		expect(og?.description).toBe(
+			"Research and fact-finding subagent that investigates, verifies, and explains problems objectively",
+		);
+		expect(og?.model).toBe("deepseek/deepseek-v4-pro");
+		expect(og?.systemPrompt).toContain("You are OG");
+
+		expect(angel?.source).toBe("project");
+		expect(angel?.description).toBe("project override");
+		expect(angel?.tools).toEqual(["read", "grep"]);
+		expect(angel?.systemPrompt).toBe("Project override.");
+	});
+
+	it("uses project overrides before user overrides for built-in agents", () => {
+		const userAgentsDir = join(agentDir, "agents");
+		const projectAgentsDir = join(cwd, ".havliand_agent", "agents");
+		mkdirSync(userAgentsDir, { recursive: true });
+		mkdirSync(projectAgentsDir, { recursive: true });
+
+		writeFileSync(
+			join(userAgentsDir, "OG.md"),
+			`---
+name: OG
+model: user/model
+---
+`,
+		);
+		writeFileSync(
+			join(projectAgentsDir, "OG.md"),
+			`---
+name: OG
+model: project/model
+---
+`,
+		);
+
+		const { agents } = discoverAgents(cwd, "both");
+		const og = agents.find((agent) => agent.name === "OG");
+
+		expect(og?.source).toBe("project");
+		expect(og?.model).toBe("project/model");
+	});
+
+	it("writes user-level model overrides without replacing existing prompt or tools", () => {
+		const userAgentsDir = join(agentDir, "agents");
+		mkdirSync(userAgentsDir, { recursive: true });
+		const agentFile = join(userAgentsDir, "OG.md");
+		writeFileSync(
+			agentFile,
+			`---
+name: OG
+description: custom research
+tools: read,grep
+---
+Custom prompt.`,
+		);
+
+		const og = discoverAgents(cwd, "user").agents.find((agent) => agent.name === "OG");
+		expect(og).toBeDefined();
+
+		const writtenPath = writeUserAgentModelOverride(og!, "deepseek/deepseek-v4-pro");
+		const after = discoverAgents(cwd, "user").agents.find((agent) => agent.name === "OG");
+
+		expect(writtenPath).toBe(agentFile);
+		expect(after?.source).toBe("user");
+		expect(after?.description).toBe("custom research");
+		expect(after?.tools).toEqual(["read", "grep"]);
+		expect(after?.model).toBe("deepseek/deepseek-v4-pro");
+		expect(after?.systemPrompt).toBe("Custom prompt.");
 	});
 
 	it("keeps non-built-in custom agents discoverable", () => {

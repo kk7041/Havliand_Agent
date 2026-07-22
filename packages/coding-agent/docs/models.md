@@ -11,6 +11,7 @@ Add custom providers and models (Ollama, vLLM, LM Studio, proxies) via `~/.havli
 - [Model Configuration](#model-configuration)
 - [Overriding Built-in Providers](#overriding-built-in-providers)
 - [Per-model Overrides](#per-model-overrides)
+- [Subagent Models](#subagent-models)
 - [Anthropic Messages Compatibility](#anthropic-messages-compatibility)
 - [OpenAI Compatibility](#openai-compatibility)
 
@@ -128,6 +129,34 @@ The `baseUrl` is required when adding custom models to the `google-generative-ai
 | `google-generative-ai` | Google Generative AI |
 
 Set `api` at provider level (default for all models) or model level (override per model).
+
+## Subagent Models
+
+Subagents use the same `provider/modelId` references as `/model` and `models.json`.
+
+The built-in `OG` and `Angel` agents do not pin a default model. If no subagent model is configured, the subagent process follows the main session model. To choose a dedicated model, run `/agents`, pick an agent, then pick a model. The command writes a user-level override under:
+
+```text
+~/.havliand_agent/agent/agents/<Name>.md
+```
+
+You can also create or edit the file yourself:
+
+```markdown
+---
+name: OG
+model: deepseek/deepseek-v4-pro
+---
+```
+
+For built-in agents, the file is merged field-by-field with the built-in definition:
+
+- `model` overrides the model.
+- `tools` overrides the tool list.
+- `description` overrides the description.
+- Non-empty body text overrides the built-in system prompt.
+
+Project-local overrides live in `.havliand_agent/agents/*.md` and take precedence over user-level overrides when subagents are run with `agentScope: "both"` or `"project"`. Environment variables `HAVLIAND_SUBAGENT_OG_MODEL` and `HAVLIAND_SUBAGENT_ANGEL_MODEL` are still supported as the lowest-priority built-in defaults.
 
 ## Provider Configuration
 

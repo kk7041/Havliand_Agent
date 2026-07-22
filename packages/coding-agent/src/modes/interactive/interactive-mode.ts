@@ -83,7 +83,13 @@ import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../cor
 import { type SessionEntry, SessionManager, sessionEntryToContextMessages } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
-import { formatSubagentPanelOptions, type SubagentDetails } from "../../core/subagent/index.ts";
+import {
+	type AgentConfig,
+	discoverAgents,
+	formatSubagentPanelOptions,
+	type SubagentDetails,
+	writeUserAgentModelOverride,
+} from "../../core/subagent/index.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
@@ -97,6 +103,7 @@ import { getCwdRelativePath } from "../../utils/paths.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
 import { checkForNewHavliandAgentVersion, type LatestHavliandAgentRelease } from "../../utils/version-check.ts";
+import { AgentSelectorComponent } from "./components/agent-selector.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
@@ -2697,6 +2704,11 @@ export class InteractiveMode {
 				await this.handleModelCommand(searchTerm);
 				return;
 			}
+			if (text === "/agents") {
+				this.editor.setText("");
+				this.showAgentSelector();
+				return;
+			}
 			if (text === "/export" || text.startsWith("/export ")) {
 				await this.handleExportCommand(text);
 				this.editor.setText("");
@@ -4496,6 +4508,58 @@ export class InteractiveMode {
 					this.ui.requestRender();
 				},
 				initialSearchInput,
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private showAgentSelector(): void {
+		const agents = discoverAgents(this.sessionManager.getCwd(), "both").agents;
+		if (agents.length === 0) {
+			this.showStatus("No agents available");
+			return;
+		}
+
+		this.showSelector((done) => {
+			const selector = new AgentSelectorComponent(
+				agents,
+				(agent) => {
+					done();
+					this.showAgentModelSelector(agent);
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	private showAgentModelSelector(agent: AgentConfig): void {
+		this.showSelector((done) => {
+			const selector = new ModelSelectorComponent(
+				this.ui,
+				undefined,
+				this.settingsManager,
+				this.session.modelRuntime,
+				this.session.scopedModels,
+				(model) => {
+					try {
+						const filePath = writeUserAgentModelOverride(agent, `${model.provider}/${model.id}`);
+						done();
+						this.showStatus(`Agent ${agent.name} model: ${model.provider}/${model.id}\n${filePath}`);
+					} catch (error) {
+						done();
+						this.showError(error instanceof Error ? error.message : String(error));
+					}
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+				agent.model,
+				false,
 			);
 			return { component: selector, focus: selector };
 		});
