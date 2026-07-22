@@ -4,6 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { stringify } from "yaml";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 
@@ -29,7 +30,7 @@ const BUILTIN_AGENTS: AgentConfig[] = [
 		name: "OG",
 		description: "Research and fact-finding subagent that investigates, verifies, and explains problems objectively",
 		tools: ["read", "grep", "find", "ls", "bash"],
-		model: process.env.HAVLIAND_SUBAGENT_OG_MODEL ?? "aicodewith-openai/deepseek-v4-pro",
+		model: process.env.HAVLIAND_SUBAGENT_OG_MODEL,
 		systemPrompt: `You are OG, the research and fact-finding subagent for havliand_agent.
 
 Hierarchy:
@@ -70,7 +71,7 @@ Output format:
 	{
 		name: "Angel",
 		description: "Execution lead subagent that implements delegated work under havliand_agent direction",
-		model: process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL ?? "aicodewith-openai/gpt-5.5",
+		model: process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL,
 		systemPrompt: `You are Angel, the execution lead subagent for havliand_agent.
 
 Hierarchy:
@@ -113,6 +114,45 @@ Output format:
 
 const BUILTIN_AGENT_NAMES = new Set(BUILTIN_AGENTS.map((agent) => agent.name));
 
+type AgentFrontmatter = {
+	name?: unknown;
+	description?: unknown;
+	tools?: unknown;
+	model?: unknown;
+};
+
+function stringField(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function toolsField(value: unknown): string[] | undefined {
+	if (typeof value === "string") {
+		const tools = value
+			.split(",")
+			.map((tool) => tool.trim())
+			.filter(Boolean);
+		return tools.length > 0 ? tools : undefined;
+	}
+	if (Array.isArray(value)) {
+		const tools = value.filter((tool): tool is string => typeof tool === "string").map((tool) => tool.trim());
+		const nonEmptyTools = tools.filter(Boolean);
+		return nonEmptyTools.length > 0 ? nonEmptyTools : undefined;
+	}
+	return undefined;
+}
+
+function mergeAgentOverlay(base: AgentConfig, overlay: AgentConfig): AgentConfig {
+	return {
+		...base,
+		description: overlay.description || base.description,
+		tools: overlay.tools ?? base.tools,
+		model: overlay.model ?? base.model,
+		systemPrompt: overlay.systemPrompt.trim() ? overlay.systemPrompt : base.systemPrompt,
+		source: overlay.source,
+		filePath: overlay.filePath,
+	};
+}
+
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
 	const agents: AgentConfig[] = [];
 
@@ -139,22 +179,26 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+		const { frontmatter, body } = parseFrontmatter<AgentFrontmatter>(content);
 
-		if (!frontmatter.name || !frontmatter.description) {
+		const name = stringField(frontmatter.name);
+		if (!name) {
 			continue;
 		}
 
-		const tools = frontmatter.tools
-			?.split(",")
-			.map((t: string) => t.trim())
-			.filter(Boolean);
+		const description = stringField(frontmatter.description);
+		if (!description && !BUILTIN_AGENT_NAMES.has(name)) {
+			continue;
+		}
+
+		const tools = toolsField(frontmatter.tools);
+		const model = stringField(frontmatter.model);
 
 		agents.push({
-			name: frontmatter.name,
-			description: frontmatter.description,
-			tools: tools && tools.length > 0 ? tools : undefined,
-			model: frontmatter.model,
+			name,
+			description: description ?? "",
+			tools,
+			model,
 			systemPrompt: body,
 			source,
 			filePath,
@@ -198,8 +242,8 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	}
 
 	const addCustomAgent = (agent: AgentConfig): void => {
-		if (BUILTIN_AGENT_NAMES.has(agent.name)) return;
-		agentMap.set(agent.name, agent);
+		const existing = agentMap.get(agent.name);
+		agentMap.set(agent.name, existing ? mergeAgentOverlay(existing, agent) : agent);
 	};
 
 	if (scope === "both") {
@@ -212,6 +256,36 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	}
 
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+}
+
+export function writeUserAgentModelOverride(agent: AgentConfig, model: string): string {
+	const userAgentsDir = path.join(getAgentDir(), "agents");
+	fs.mkdirSync(userAgentsDir, { recursive: true });
+
+	const filePath =
+		agent.source === "user" && agent.filePath !== `<builtin:${agent.name}>`
+			? agent.filePath
+			: path.join(userAgentsDir, `${agent.name}.md`);
+
+	let frontmatter: Record<string, unknown> = {};
+	let body = "";
+	if (fs.existsSync(filePath)) {
+		const parsed = parseFrontmatter<Record<string, unknown>>(fs.readFileSync(filePath, "utf-8"));
+		frontmatter = { ...parsed.frontmatter };
+		body = parsed.body;
+	}
+
+	frontmatter.name = typeof frontmatter.name === "string" && frontmatter.name.trim() ? frontmatter.name : agent.name;
+	frontmatter.description =
+		typeof frontmatter.description === "string" && frontmatter.description.trim()
+			? frontmatter.description
+			: agent.description;
+	frontmatter.model = model;
+
+	const yaml = stringify(frontmatter).trimEnd();
+	const content = `---\n${yaml}\n---${body ? `\n${body.trimEnd()}\n` : "\n"}`;
+	fs.writeFileSync(filePath, content, { encoding: "utf-8", mode: 0o600 });
+	return filePath;
 }
 
 export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {

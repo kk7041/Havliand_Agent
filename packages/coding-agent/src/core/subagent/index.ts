@@ -29,7 +29,7 @@ import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.ts";
 
 export type { AgentConfig, AgentDiscoveryResult, AgentScope } from "./agents.ts";
-export { discoverAgents, formatAgentList } from "./agents.ts";
+export { discoverAgents, formatAgentList, writeUserAgentModelOverride } from "./agents.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -582,8 +582,8 @@ export function createSubagentToolDefinition(
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
 			`Available agents: ${agentListText}.`,
-			'Built-in agents include "OG" and "Angel" and cannot be overridden by custom agents.',
-			`Custom user agents are loaded from ${path.join(getAgentDir(), "agents")}.`,
+			'Built-in agents include "OG" and "Angel"; matching user or project agent files override them field-by-field.',
+			`User agents are loaded from ${path.join(getAgentDir(), "agents")}.`,
 			'To include project-local custom agents, set agentScope: "both" (or "project").',
 		].join(" "),
 		promptSnippet: "Delegate tasks to built-in or custom subagents with isolated context",
