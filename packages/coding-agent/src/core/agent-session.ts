@@ -100,7 +100,7 @@ import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader }
 import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
-import { DelegationGuard, isDelegationGuardDisabledByEnv } from "./subagent/delegation-guard.ts";
+import { DelegationGuard, isDelegationGuardDisabledForProcess } from "./subagent/delegation-guard.ts";
 import { createSubagentToolDefinition, discoverAgents, formatAgentList } from "./subagent/index.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
@@ -508,10 +508,10 @@ export class AgentSession {
 
 	/**
 	 * Delegation guard applies only to orchestrator sessions (subagent tool active)
-	 * and can be disabled via HAVLIAND_DELEGATION_GUARD=off.
+	 * and can be disabled via HAVLIAND_DELEGATION_GUARD=off or the subagent marker.
 	 */
 	private _checkDelegationGuard(toolName: string, args: unknown): string | undefined {
-		if (isDelegationGuardDisabledByEnv()) {
+		if (isDelegationGuardDisabledForProcess()) {
 			return undefined;
 		}
 		if (!this.getActiveToolNames().includes("subagent")) {

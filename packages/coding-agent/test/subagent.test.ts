@@ -269,4 +269,33 @@ Plan work.`,
 		expect(panel.rows?.join("\n")).toContain("2.5s");
 		expect(panel.rows?.join("\n")).toContain("aicodewith-openai/gpt-5.5");
 	});
+
+	it("surfaces subagent timeout errors in live panel rows", () => {
+		initTheme("dark");
+		const details: SubagentDetails = {
+			mode: "single",
+			agentScope: "user",
+			projectAgentsDir: null,
+			results: [
+				{
+					agent: "Angel",
+					agentSource: "builtin",
+					task: "implement",
+					exitCode: 1,
+					messages: [],
+					stderr: "Subagent timed out after 10m",
+					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+					startedAt: 1000,
+					finishedAt: 601000,
+					stopReason: "error",
+					errorMessage: "Subagent timed out after 10m",
+				},
+			],
+		};
+
+		const panel = formatSubagentPanelOptions(details, 601000);
+
+		expect(panel.rows?.join("\n")).toContain("ERR");
+		expect(panel.rows?.join("\n")).toContain("Subagent timed out after 10m");
+	});
 });

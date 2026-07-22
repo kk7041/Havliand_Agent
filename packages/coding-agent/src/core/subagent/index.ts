@@ -27,6 +27,7 @@ import { getMarkdownTheme, type ThemeColor, theme } from "../../modes/interactiv
 import type { ExtensionAPI, ToolDefinition } from "../extensions/types.ts";
 import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.ts";
+import { DELEGATION_GUARD_ENV_FLAG, SUBAGENT_PROCESS_ENV_FLAG } from "./delegation-guard.ts";
 
 export type { AgentConfig, AgentDiscoveryResult, AgentScope } from "./agents.ts";
 export { discoverAgents, formatAgentList, writeUserAgentModelOverride } from "./agents.ts";
@@ -35,6 +36,27 @@ const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
+const DEFAULT_SUBAGENT_TIMEOUT_MS = 10 * 60 * 1000;
+const SUBAGENT_KILL_GRACE_MS = 5000;
+const SUBAGENT_TIMEOUT_MS_ENV_FLAG = "HAVLIAND_SUBAGENT_TIMEOUT_MS";
+
+function getSubagentTimeoutMs(env: NodeJS.ProcessEnv = process.env): number | undefined {
+	const rawValue = env[SUBAGENT_TIMEOUT_MS_ENV_FLAG];
+	if (rawValue === undefined) return DEFAULT_SUBAGENT_TIMEOUT_MS;
+
+	const value = Number(rawValue.trim());
+	if (!Number.isFinite(value) || value < 0) return DEFAULT_SUBAGENT_TIMEOUT_MS;
+	if (value === 0) return undefined;
+	return Math.floor(value);
+}
+
+function formatDurationMs(ms: number): string {
+	if (ms % 1000 !== 0) return `${ms}ms`;
+	const seconds = ms / 1000;
+	if (seconds % 60 !== 0) return `${seconds}s`;
+	const minutes = seconds / 60;
+	return `${minutes}m`;
+}
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -260,9 +282,12 @@ export function formatSubagentPanelOptions(details: SubagentDetails, now = Date.
 		const step = result.step ? themeFgForPanel("dim", `#${result.step} `) : "";
 		const source = result.agentSource === "builtin" ? "" : themeFgForPanel("dim", ` (${result.agentSource})`);
 		const toolCall = getLastToolCall(result.messages);
-		const action = toolCall
-			? formatToolCall(toolCall.name, toolCall.args, themeFgForPanel)
-			: themeFgForPanel("dim", result.exitCode === -1 ? "starting..." : "no tool calls");
+		const action =
+			failedResult && result.errorMessage
+				? themeFgForPanel("error", result.errorMessage)
+				: toolCall
+					? formatToolCall(toolCall.name, toolCall.args, themeFgForPanel)
+					: themeFgForPanel("dim", result.exitCode === -1 ? "starting..." : "no tool calls");
 		const elapsed = themeFgForPanel("dim", formatElapsed(result.startedAt, result.finishedAt, now));
 		const usage =
 			result.exitCode === -1 ? "" : themeFgForPanel("dim", ` ${formatUsageStats(result.usage, result.model)}`);
@@ -397,17 +422,40 @@ async function runSingleAgent(
 
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
+		let timedOut = false;
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
+			const timeoutMs = getSubagentTimeoutMs();
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
+				env: {
+					...process.env,
+					[DELEGATION_GUARD_ENV_FLAG]: "off",
+					[SUBAGENT_PROCESS_ENV_FLAG]: "1",
+				},
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 			emitUpdate();
 			let buffer = "";
 			let streamingAssistantIndex: number | undefined;
+			let killGraceTimer: NodeJS.Timeout | undefined;
+			let timeoutTimer: NodeJS.Timeout | undefined;
+			let terminating = false;
+
+			const forceKillIfStillRunning = () => {
+				if (proc.exitCode === null && proc.signalCode === null) {
+					proc.kill("SIGKILL");
+				}
+			};
+
+			const terminateProc = () => {
+				if (terminating) return;
+				terminating = true;
+				proc.kill("SIGTERM");
+				killGraceTimer = setTimeout(forceKillIfStillRunning, SUBAGENT_KILL_GRACE_MS);
+			};
 
 			const upsertStreamingAssistant = (message: Message) => {
 				if (streamingAssistantIndex === undefined) {
@@ -497,21 +545,32 @@ async function runSingleAgent(
 			});
 
 			proc.on("close", (code) => {
+				if (timeoutTimer) clearTimeout(timeoutTimer);
+				if (killGraceTimer) clearTimeout(killGraceTimer);
 				if (buffer.trim()) processLine(buffer);
 				resolve(code ?? 0);
 			});
 
 			proc.on("error", () => {
+				if (timeoutTimer) clearTimeout(timeoutTimer);
+				if (killGraceTimer) clearTimeout(killGraceTimer);
 				resolve(1);
 			});
+
+			if (timeoutMs !== undefined) {
+				timeoutTimer = setTimeout(() => {
+					timedOut = true;
+					currentResult.stopReason = "error";
+					currentResult.errorMessage = `Subagent timed out after ${formatDurationMs(timeoutMs)}`;
+					currentResult.stderr += `${currentResult.stderr ? "\n" : ""}${currentResult.errorMessage}`;
+					terminateProc();
+				}, timeoutMs);
+			}
 
 			if (signal) {
 				const killProc = () => {
 					wasAborted = true;
-					proc.kill("SIGTERM");
-					setTimeout(() => {
-						if (!proc.killed) proc.kill("SIGKILL");
-					}, 5000);
+					terminateProc();
 				};
 				if (signal.aborted) killProc();
 				else signal.addEventListener("abort", killProc, { once: true });
@@ -521,6 +580,9 @@ async function runSingleAgent(
 		currentResult.exitCode = exitCode;
 		currentResult.finishedAt = Date.now();
 		if (wasAborted) throw new Error("Subagent was aborted");
+		if (timedOut && currentResult.exitCode === 0) {
+			currentResult.exitCode = 1;
+		}
 		return currentResult;
 	} finally {
 		if (tmpPromptPath)

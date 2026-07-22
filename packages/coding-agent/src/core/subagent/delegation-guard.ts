@@ -6,8 +6,9 @@
  * exploration tools are blocked until a `subagent` call happens in the same turn,
  * after which exploration is unrestricted so results can be validated.
  *
- * The guard only applies to sessions where the `subagent` tool is active, so
- * subagent child sessions (which run without a `subagent` tool) are unaffected.
+ * The guard only applies to top-level orchestrator sessions. Spawned subagent
+ * child sessions are marked explicitly so they are unaffected even if they load
+ * the `subagent` tool.
  */
 
 const EXPLORATION_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -23,11 +24,23 @@ const EXPLORATORY_BASH_PATTERN =
 /** Set to 0/off/false/disabled to turn the guard off. */
 export const DELEGATION_GUARD_ENV_FLAG = "HAVLIAND_DELEGATION_GUARD";
 
+/** Set to 1/true/on/yes in spawned child sessions. */
+export const SUBAGENT_PROCESS_ENV_FLAG = "HAVLIAND_IS_SUBAGENT";
+
 export const DEFAULT_EXPLORATION_ALLOWANCE = 2;
 
 export function isDelegationGuardDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
 	const value = env[DELEGATION_GUARD_ENV_FLAG]?.trim().toLowerCase();
 	return value === "0" || value === "off" || value === "false" || value === "disabled";
+}
+
+export function isSubagentProcess(env: NodeJS.ProcessEnv = process.env): boolean {
+	const value = env[SUBAGENT_PROCESS_ENV_FLAG]?.trim().toLowerCase();
+	return value === "1" || value === "true" || value === "on" || value === "yes";
+}
+
+export function isDelegationGuardDisabledForProcess(env: NodeJS.ProcessEnv = process.env): boolean {
+	return isSubagentProcess(env) || isDelegationGuardDisabledByEnv(env);
 }
 
 export interface DelegationGuardOptions {
