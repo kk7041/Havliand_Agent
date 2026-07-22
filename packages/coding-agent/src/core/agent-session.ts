@@ -100,6 +100,7 @@ import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader }
 import type { SettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
+import { DelegationGuard, isDelegationGuardDisabledByEnv } from "./subagent/delegation-guard.ts";
 import { createSubagentToolDefinition, discoverAgents, formatAgentList } from "./subagent/index.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
@@ -343,6 +344,9 @@ export class AgentSession {
 
 	private _modelRuntime: ModelRuntime;
 
+	// Enforces mandatory delegation in orchestrator sessions (subagent tool active)
+	private _delegationGuard = new DelegationGuard();
+
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
@@ -449,6 +453,11 @@ export class AgentSession {
 	 */
 	private _installAgentToolHooks(): void {
 		this.agent.beforeToolCall = async ({ toolCall, args }) => {
+			const guardReason = this._checkDelegationGuard(toolCall.name, args);
+			if (guardReason) {
+				return { block: true, reason: guardReason };
+			}
+
 			const runner = this._extensionRunner;
 			if (!runner.hasHandlers("tool_call")) {
 				return undefined;
@@ -495,6 +504,20 @@ export class AgentSession {
 				isError: hookResult.isError ?? isError,
 			};
 		};
+	}
+
+	/**
+	 * Delegation guard applies only to orchestrator sessions (subagent tool active)
+	 * and can be disabled via HAVLIAND_DELEGATION_GUARD=off.
+	 */
+	private _checkDelegationGuard(toolName: string, args: unknown): string | undefined {
+		if (isDelegationGuardDisabledByEnv()) {
+			return undefined;
+		}
+		if (!this.getActiveToolNames().includes("subagent")) {
+			return undefined;
+		}
+		return this._delegationGuard.check(toolName, args);
 	}
 
 	private _installAgentNextTurnRefresh(): void {
@@ -1055,6 +1078,7 @@ export class AgentSession {
 
 	private async _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
 		this._isAgentRunActive = true;
+		this._delegationGuard.resetTurn();
 		try {
 			await this.agent.prompt(messages);
 			while (await this._handlePostAgentRun()) {
@@ -1365,6 +1389,7 @@ export class AgentSession {
 	 */
 	private async _queueSteer(text: string, images?: ImageContent[]): Promise<void> {
 		this._steeringMessages.push(text);
+		this._delegationGuard.resetTurn();
 		this._emitQueueUpdate();
 		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
 		if (images) {
@@ -1382,6 +1407,7 @@ export class AgentSession {
 	 */
 	private async _queueFollowUp(text: string, images?: ImageContent[]): Promise<void> {
 		this._followUpMessages.push(text);
+		this._delegationGuard.resetTurn();
 		this._emitQueueUpdate();
 		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
 		if (images) {

@@ -1,0 +1,91 @@
+/**
+ * Turn-scoped enforcement of the mandatory-delegation policy.
+ *
+ * The orchestrator session gets a small per-turn allowance of direct exploration
+ * tool calls (enough to decide what to delegate). Once the allowance is used,
+ * exploration tools are blocked until a `subagent` call happens in the same turn,
+ * after which exploration is unrestricted so results can be validated.
+ *
+ * The guard only applies to sessions where the `subagent` tool is active, so
+ * subagent child sessions (which run without a `subagent` tool) are unaffected.
+ */
+
+const EXPLORATION_TOOLS = new Set(["read", "grep", "find", "ls"]);
+
+/**
+ * Bash counts as exploration only when the command starts with a read-only
+ * inspection binary (optionally after a `cd <dir> &&`/`;` prefix). Anything
+ * else (builds, tests, git, scripts) is not gated.
+ */
+const EXPLORATORY_BASH_PATTERN =
+	/^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:cat|rg|grep|egrep|fgrep|find|fd|ls|head|tail|tree|wc|stat|file|du)\b/;
+
+/** Set to 0/off/false/disabled to turn the guard off. */
+export const DELEGATION_GUARD_ENV_FLAG = "HAVLIAND_DELEGATION_GUARD";
+
+export const DEFAULT_EXPLORATION_ALLOWANCE = 2;
+
+export function isDelegationGuardDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+	const value = env[DELEGATION_GUARD_ENV_FLAG]?.trim().toLowerCase();
+	return value === "0" || value === "off" || value === "false" || value === "disabled";
+}
+
+export interface DelegationGuardOptions {
+	/** Direct exploration calls allowed per turn before delegation is required. Default: 2. */
+	maxExplorationCallsPerTurn?: number;
+}
+
+export class DelegationGuard {
+	private _explorationCalls = 0;
+	private _subagentCalledThisTurn = false;
+	private readonly _maxExplorationCallsPerTurn: number;
+
+	constructor(options: DelegationGuardOptions = {}) {
+		this._maxExplorationCallsPerTurn = options.maxExplorationCallsPerTurn ?? DEFAULT_EXPLORATION_ALLOWANCE;
+	}
+
+	/** Call when a new user turn starts (prompt, steer, or follow-up). */
+	resetTurn(): void {
+		this._explorationCalls = 0;
+		this._subagentCalledThisTurn = false;
+	}
+
+	/**
+	 * Check a tool call against the delegation policy.
+	 * Returns a block reason when the call must be rejected, undefined when allowed.
+	 */
+	check(toolName: string, args: unknown): string | undefined {
+		if (toolName === "subagent") {
+			this._subagentCalledThisTurn = true;
+			return undefined;
+		}
+		if (this._subagentCalledThisTurn) {
+			return undefined;
+		}
+		if (!isExplorationCall(toolName, args)) {
+			return undefined;
+		}
+		this._explorationCalls += 1;
+		if (this._explorationCalls <= this._maxExplorationCallsPerTurn) {
+			return undefined;
+		}
+		return (
+			`Delegation required: the direct-exploration allowance for this turn ` +
+			`(${this._maxExplorationCallsPerTurn} calls) is used up. ` +
+			`Delegate research, investigation, and fact-finding to a research subagent (e.g. OG) ` +
+			`and implementation to an execution subagent (e.g. Angel) via the \`subagent\` tool. ` +
+			`Direct exploration unlocks again after a \`subagent\` call this turn, for validating results.`
+		);
+	}
+}
+
+export function isExplorationCall(toolName: string, args: unknown): boolean {
+	if (EXPLORATION_TOOLS.has(toolName)) {
+		return true;
+	}
+	if (toolName !== "bash") {
+		return false;
+	}
+	const command = (args as { command?: unknown } | undefined)?.command;
+	return typeof command === "string" && EXPLORATORY_BASH_PATTERN.test(command);
+}
