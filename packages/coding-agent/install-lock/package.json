@@ -1,10 +1,10 @@
 {
 	"name": "@havliand_agent/coding-agent-install",
-	"version": "0.80.7",
+	"version": "0.80.8",
 	"private": true,
 	"description": "Lockfile root used by the HavliandAgent installer and updater.",
 	"dependencies": {
-		"@havliand_agent/coding-agent": "0.80.7"
+		"@havliand_agent/coding-agent": "0.80.8"
 	},
 	"overrides": {
 		"rimraf": "6.1.2",

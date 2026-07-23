@@ -1,6 +1,6 @@
 {
 	"name": "@havliand_agent/coding-agent",
-	"version": "0.80.7",
+	"version": "0.80.8",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"havliand_agentConfig": {
@@ -39,9 +39,9 @@
 		"prepublishOnly": "npm run clean && npm run build && npm run shrinkwrap"
 	},
 	"dependencies": {
-		"@havliand_agent/agent-core": "^0.80.7",
-		"@havliand_agent/ai": "^0.80.7",
-		"@havliand_agent/tui": "^0.80.7",
+		"@havliand_agent/agent-core": "^0.80.8",
+		"@havliand_agent/ai": "^0.80.8",
+		"@havliand_agent/tui": "^0.80.8",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"chalk": "5.6.2",
 		"cross-spawn": "7.0.6",

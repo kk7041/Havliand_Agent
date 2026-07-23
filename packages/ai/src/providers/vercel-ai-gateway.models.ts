@@ -2806,6 +2806,23 @@ export const VERCEL_AI_GATEWAY_MODELS = {
 		contextWindow: 256000,
 		maxTokens: 256000,
 	} satisfies Model<"anthropic-messages">,
+	"tencent/hy3": {
+		id: "tencent/hy3",
+		name: "Hy3",
+		api: "anthropic-messages",
+		provider: "vercel-ai-gateway",
+		baseUrl: "https://ai-gateway.vercel.sh",
+		reasoning: true,
+		input: ["text"],
+		cost: {
+			input: 0.14,
+			output: 0.58,
+			cacheRead: 0.035,
+			cacheWrite: 0,
+		},
+		contextWindow: 262144,
+		maxTokens: 262144,
+	} satisfies Model<"anthropic-messages">,
 	"thinkingmachines/inkling": {
 		id: "thinkingmachines/inkling",
 		name: "Inkling",
