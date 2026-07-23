@@ -60,6 +60,7 @@ describe("built-in subagents", () => {
 		expect(agents.find((agent) => agent.name === "Angel")?.source).toBe("builtin");
 		expect(agents.find((agent) => agent.name === "OG")?.model).toBeUndefined();
 		expect(agents.find((agent) => agent.name === "Angel")?.model).toBeUndefined();
+		expect(agents.find((agent) => agent.name === "OG")?.tools).toContain("websearch");
 	});
 
 	it("lists built-in and user agents in the subagent tool description", () => {
@@ -101,6 +102,7 @@ model: deepseek/deepseek-v4-pro
 name: Angel
 description: project override
 tools: read,grep
+skills: ./skills/code-review
 ---
 Project override.`,
 		);
@@ -119,6 +121,7 @@ Project override.`,
 		expect(angel?.source).toBe("project");
 		expect(angel?.description).toBe("project override");
 		expect(angel?.tools).toEqual(["read", "grep"]);
+		expect(angel?.skills).toEqual(["./skills/code-review"]);
 		expect(angel?.systemPrompt).toBe("Project override.");
 	});
 
@@ -162,6 +165,7 @@ model: project/model
 name: OG
 description: custom research
 tools: read,grep
+skills: ./skills/research
 ---
 Custom prompt.`,
 		);
@@ -176,6 +180,7 @@ Custom prompt.`,
 		expect(after?.source).toBe("user");
 		expect(after?.description).toBe("custom research");
 		expect(after?.tools).toEqual(["read", "grep"]);
+		expect(after?.skills).toEqual(["./skills/research"]);
 		expect(after?.model).toBe("deepseek/deepseek-v4-pro");
 		expect(after?.systemPrompt).toBe("Custom prompt.");
 	});

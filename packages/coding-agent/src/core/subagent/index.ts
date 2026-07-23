@@ -386,6 +386,29 @@ async function runSingleAgent(
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	if (agent.skills && agent.skills.length > 0) {
+		if (agent.tools && !agent.tools.includes("read")) {
+			const now = Date.now();
+			return {
+				agent: agentName,
+				agentSource: agent.source,
+				task,
+				exitCode: 1,
+				messages: [],
+				stderr: `Agent "${agentName}" declares skills but does not include the read tool, so skill instructions cannot be loaded.`,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+				startedAt: now,
+				finishedAt: now,
+				model: agent.model,
+				stopReason: "error",
+				errorMessage: `Agent "${agentName}" declares skills but does not include the read tool.`,
+				step,
+			};
+		}
+		for (const skillPath of agent.skills) {
+			args.push("--skill", skillPath);
+		}
+	}
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;

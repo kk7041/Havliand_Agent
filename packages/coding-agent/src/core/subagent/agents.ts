@@ -14,6 +14,7 @@ export interface AgentConfig {
 	name: string;
 	description: string;
 	tools?: string[];
+	skills?: string[];
 	model?: string;
 	systemPrompt: string;
 	source: "builtin" | "user" | "project";
@@ -29,7 +30,7 @@ const BUILTIN_AGENTS: AgentConfig[] = [
 	{
 		name: "OG",
 		description: "Research and fact-finding subagent that investigates, verifies, and explains problems objectively",
-		tools: ["read", "grep", "find", "ls", "bash"],
+		tools: ["read", "grep", "find", "ls", "bash", "websearch"],
 		model: process.env.HAVLIAND_SUBAGENT_OG_MODEL,
 		systemPrompt: `You are OG, the research and fact-finding subagent for havliand_agent.
 
@@ -47,8 +48,9 @@ Role:
 Operating rules:
 - Be objective and precise.
 - Do not implement changes unless the delegated task explicitly asks for a small read-only-safe diagnostic script or command.
-- Prefer read-only tools: read, grep, find, ls.
+- Prefer read-only tools: read, grep, find, ls, websearch.
 - Use bash for read-only inspection commands when it materially improves accuracy.
+- Use websearch when external facts, docs, versions, or current behavior need verification.
 - Do not invent missing facts. Say what you could not verify.
 - Return concise findings that havliand_agent can use to issue execution instructions.
 
@@ -118,6 +120,7 @@ type AgentFrontmatter = {
 	name?: unknown;
 	description?: unknown;
 	tools?: unknown;
+	skills?: unknown;
 	model?: unknown;
 };
 
@@ -141,11 +144,28 @@ function toolsField(value: unknown): string[] | undefined {
 	return undefined;
 }
 
+function listField(value: unknown): string[] | undefined {
+	if (typeof value === "string") {
+		const values = value
+			.split(",")
+			.map((item) => item.trim())
+			.filter(Boolean);
+		return values.length > 0 ? values : undefined;
+	}
+	if (Array.isArray(value)) {
+		const values = value.filter((item): item is string => typeof item === "string").map((item) => item.trim());
+		const nonEmptyValues = values.filter(Boolean);
+		return nonEmptyValues.length > 0 ? nonEmptyValues : undefined;
+	}
+	return undefined;
+}
+
 function mergeAgentOverlay(base: AgentConfig, overlay: AgentConfig): AgentConfig {
 	return {
 		...base,
 		description: overlay.description || base.description,
 		tools: overlay.tools ?? base.tools,
+		skills: overlay.skills ?? base.skills,
 		model: overlay.model ?? base.model,
 		systemPrompt: overlay.systemPrompt.trim() ? overlay.systemPrompt : base.systemPrompt,
 		source: overlay.source,
@@ -192,12 +212,14 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 		}
 
 		const tools = toolsField(frontmatter.tools);
+		const skills = listField(frontmatter.skills);
 		const model = stringField(frontmatter.model);
 
 		agents.push({
 			name,
 			description: description ?? "",
 			tools,
+			skills,
 			model,
 			systemPrompt: body,
 			source,
