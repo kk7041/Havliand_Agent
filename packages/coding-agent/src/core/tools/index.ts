@@ -52,6 +52,17 @@ export {
 	type ReadToolOptions,
 } from "./read.ts";
 export {
+	createTaskCreateToolDefinition,
+	createTaskGetToolDefinition,
+	createTaskListToolDefinition,
+	createTaskStopToolDefinition,
+	createTaskTools,
+	createTaskUpdateToolDefinition,
+	type TaskItem,
+	type TaskStatus,
+	type TaskToolDetails,
+} from "./tasks.ts";
+export {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
@@ -61,6 +72,13 @@ export {
 	truncateLine,
 	truncateTail,
 } from "./truncate.ts";
+export {
+	createWebSearchTool,
+	createWebSearchToolDefinition,
+	type WebSearchResult,
+	type WebSearchToolDetails,
+	type WebSearchToolInput,
+} from "./websearch.ts";
 export {
 	createWriteTool,
 	createWriteToolDefinition,
@@ -77,12 +95,48 @@ import { createFindTool, createFindToolDefinition, type FindToolOptions } from "
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
+import {
+	createTaskCreateToolDefinition,
+	createTaskGetToolDefinition,
+	createTaskListToolDefinition,
+	createTaskStopToolDefinition,
+	createTaskUpdateToolDefinition,
+} from "./tasks.ts";
+import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
+import { createWebSearchTool, createWebSearchToolDefinition } from "./websearch.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
-export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+export type ToolName =
+	| "read"
+	| "bash"
+	| "edit"
+	| "write"
+	| "grep"
+	| "find"
+	| "ls"
+	| "websearch"
+	| "task_create"
+	| "task_list"
+	| "task_get"
+	| "task_update"
+	| "task_stop";
+export const allToolNames: Set<ToolName> = new Set([
+	"read",
+	"bash",
+	"edit",
+	"write",
+	"grep",
+	"find",
+	"ls",
+	"websearch",
+	"task_create",
+	"task_list",
+	"task_get",
+	"task_update",
+	"task_stop",
+]);
 
 export interface ToolsOptions {
 	read?: ReadToolOptions;
@@ -110,6 +164,18 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
+		case "websearch":
+			return createWebSearchToolDefinition(cwd);
+		case "task_create":
+			return createTaskCreateToolDefinition(cwd);
+		case "task_list":
+			return createTaskListToolDefinition(cwd);
+		case "task_get":
+			return createTaskGetToolDefinition(cwd);
+		case "task_update":
+			return createTaskUpdateToolDefinition(cwd);
+		case "task_stop":
+			return createTaskStopToolDefinition(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -131,6 +197,18 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
+		case "websearch":
+			return createWebSearchTool(cwd);
+		case "task_create":
+			return wrapToolDefinition(createTaskCreateToolDefinition(cwd));
+		case "task_list":
+			return wrapToolDefinition(createTaskListToolDefinition(cwd));
+		case "task_get":
+			return wrapToolDefinition(createTaskGetToolDefinition(cwd));
+		case "task_update":
+			return wrapToolDefinition(createTaskUpdateToolDefinition(cwd));
+		case "task_stop":
+			return wrapToolDefinition(createTaskStopToolDefinition(cwd));
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -163,6 +241,12 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
+		websearch: createWebSearchToolDefinition(cwd),
+		task_create: createTaskCreateToolDefinition(cwd),
+		task_list: createTaskListToolDefinition(cwd),
+		task_get: createTaskGetToolDefinition(cwd),
+		task_update: createTaskUpdateToolDefinition(cwd),
+		task_stop: createTaskStopToolDefinition(cwd),
 	};
 }
 
@@ -193,5 +277,11 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
+		websearch: createWebSearchTool(cwd),
+		task_create: wrapToolDefinition(createTaskCreateToolDefinition(cwd)),
+		task_list: wrapToolDefinition(createTaskListToolDefinition(cwd)),
+		task_get: wrapToolDefinition(createTaskGetToolDefinition(cwd)),
+		task_update: wrapToolDefinition(createTaskUpdateToolDefinition(cwd)),
+		task_stop: wrapToolDefinition(createTaskStopToolDefinition(cwd)),
 	};
 }
