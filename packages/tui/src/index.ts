@@ -16,6 +16,7 @@ export { Image, type ImageOptions, type ImageTheme } from "./components/image.ts
 export { Input } from "./components/input.ts";
 export { Loader, type LoaderIndicatorOptions, type LoaderIndicatorPreset } from "./components/loader.ts";
 export { type DefaultTextStyle, Markdown, type MarkdownOptions, type MarkdownTheme } from "./components/markdown.ts";
+export { Progress, type ProgressCount, type ProgressOptions, type ProgressTheme } from "./components/progress.ts";
 export {
 	type SelectItem,
 	SelectList,

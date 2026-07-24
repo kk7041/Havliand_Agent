@@ -31,6 +31,7 @@ import {
 	Markdown,
 	matchesKey,
 	ProcessTerminal,
+	Progress,
 	Spacer,
 	setKeybindings,
 	Text,
@@ -90,6 +91,7 @@ import {
 	type SubagentDetails,
 	writeUserAgentModelOverride,
 } from "../../core/subagent/index.ts";
+import { type TaskProgress, TaskProgressProvider } from "../../core/task-progress-provider.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
@@ -318,6 +320,9 @@ export class InteractiveMode {
 	private editorContainer: Container;
 	private footer: FooterComponent;
 	private footerDataProvider: FooterDataProvider;
+	private taskProgressProvider: TaskProgressProvider | undefined = undefined;
+	private taskProgressComponent: Progress | undefined = undefined;
+	private taskProgress: TaskProgress = { done: 0, total: 0 };
 	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
 	private keybindings: KeybindingsManager;
 	private version: string;
@@ -794,6 +799,7 @@ export class InteractiveMode {
 		this.footerDataProvider.onBranchChange(() => {
 			this.ui.requestRender();
 		});
+		this.rebindTaskProgressProvider();
 
 		// Initialize available provider count for footer display
 		await this.updateAvailableProviderCount();
@@ -1718,6 +1724,7 @@ export class InteractiveMode {
 		this.footer.setSession(this.session);
 		this.footer.setAutoCompactEnabled(this.session.autoCompactionEnabled);
 		this.footerDataProvider.setCwd(this.sessionManager.getCwd());
+		this.rebindTaskProgressProvider();
 		this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 		this.outputPad = this.settingsManager.getOutputPad();
 		this.toolWidgetMode = this.settingsManager.getToolWidgetMode();
@@ -2042,6 +2049,46 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private rebindTaskProgressProvider(): void {
+		this.taskProgressProvider?.dispose();
+		this.taskProgressProvider = new TaskProgressProvider(
+			this.sessionManager.getCwd(),
+			this.sessionManager.getSessionId(),
+		);
+		this.taskProgressProvider.onChange((progress) => {
+			this.taskProgress = progress;
+			this.updateTaskProgressComponent();
+			this.renderWidgets();
+		});
+	}
+
+	private updateTaskProgressComponent(): void {
+		if (this.taskProgress.total === 0) {
+			this.taskProgressComponent = undefined;
+			return;
+		}
+
+		const value = this.taskProgress.done / this.taskProgress.total;
+		const taskProgressTheme = {
+			fill: (text: string) => theme.fg("accent", text),
+			track: (text: string) => theme.fg("muted", text),
+			label: (text: string) => theme.fg("muted", text),
+			meta: (text: string) => theme.fg("muted", text),
+		};
+		if (!this.taskProgressComponent) {
+			this.taskProgressComponent = new Progress({
+				value,
+				label: "Tasks",
+				count: this.taskProgress,
+				theme: taskProgressTheme,
+			});
+			return;
+		}
+
+		this.taskProgressComponent.setTheme(taskProgressTheme);
+		this.taskProgressComponent.setValue(value, this.taskProgress);
+	}
+
 	private renderWidgetContainer(
 		container: Container,
 		widgets: Map<string, Component & { dispose?(): void }>,
@@ -2049,8 +2096,9 @@ export class InteractiveMode {
 		leadingSpacer: boolean,
 	): void {
 		container.clear();
+		const taskProgressComponent = container === this.widgetContainerAbove ? this.taskProgressComponent : undefined;
 
-		if (widgets.size === 0) {
+		if (widgets.size === 0 && !taskProgressComponent) {
 			if (spacerWhenEmpty) {
 				container.addChild(new Spacer(1));
 			}
@@ -2059,6 +2107,9 @@ export class InteractiveMode {
 
 		if (leadingSpacer) {
 			container.addChild(new Spacer(1));
+		}
+		if (taskProgressComponent) {
+			container.addChild(taskProgressComponent);
 		}
 		for (const component of widgets.values()) {
 			container.addChild(component);
@@ -6112,6 +6163,9 @@ export class InteractiveMode {
 		this.clearExtensionTerminalInputListeners();
 		this.footer.dispose();
 		this.footerDataProvider.dispose();
+		this.taskProgressProvider?.dispose();
+		this.taskProgressProvider = undefined;
+		this.taskProgressComponent = undefined;
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}

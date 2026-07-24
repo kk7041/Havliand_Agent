@@ -27,7 +27,7 @@ export interface TaskItem {
 	updatedAt: string;
 }
 
-interface TaskStoreFile {
+export interface TaskStoreFile {
 	cwd: string;
 	sessionId: string;
 	tasks: TaskItem[];
@@ -91,14 +91,17 @@ function stableId(value: string): string {
 	return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }
 
-function taskRootDir(): string {
+export function taskRootDir(): string {
 	return join(getAgentDir(), "tasks");
 }
 
+export function getTaskStorePath(cwd: string, sessionId: string): string {
+	return join(taskRootDir(), stableId(cwd), `${sessionId}.json`);
+}
+
 function getStorePath(ctx: ExtensionContext): string {
-	const cwdHash = stableId(ctx.cwd);
 	const sessionId = ctx.sessionManager.getSessionId?.() ?? "session";
-	return join(taskRootDir(), cwdHash, `${sessionId}.json`);
+	return getTaskStorePath(ctx.cwd, sessionId);
 }
 
 function getStoreKeys(ctx: ExtensionContext): { cwd: string; sessionId: string } {
@@ -144,7 +147,7 @@ function formatTaskList(tasks: TaskItem[]): string {
 	return tasks.map((task, index) => `${index + 1}. ${summarizeTask(task)}`).join("\n");
 }
 
-async function readStore(filePath: string): Promise<TaskStoreFile> {
+export async function readTaskStore(filePath: string): Promise<TaskStoreFile> {
 	try {
 		const raw = await readFile(filePath, "utf-8");
 		const parsed = JSON.parse(raw) as Partial<TaskStoreFile>;
@@ -165,7 +168,7 @@ async function writeStore(filePath: string, store: TaskStoreFile): Promise<void>
 
 async function mutateStore(filePath: string, updater: (store: TaskStoreFile) => TaskStoreFile): Promise<TaskStoreFile> {
 	return withFileMutationQueue(filePath, async () => {
-		const current = await readStore(filePath);
+		const current = await readTaskStore(filePath);
 		const next = updater(current);
 		await writeStore(filePath, next);
 		return next;
@@ -185,7 +188,7 @@ async function loadAllTasks(): Promise<Array<{ filePath: string; store: TaskStor
 			if (entry.isDirectory()) {
 				queue.push(fullPath);
 			} else if (entry.isFile() && entry.name.endsWith(".json")) {
-				results.push({ filePath: fullPath, store: await readStore(fullPath) });
+				results.push({ filePath: fullPath, store: await readTaskStore(fullPath) });
 			}
 		}
 	}

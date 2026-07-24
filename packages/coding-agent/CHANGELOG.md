@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a real-time task completion progress bar above the interactive editor ([#23](https://github.com/kk7041/havliand_agent/issues/23)).
 - Added Postgres-backed chat mirroring with `chat_search`, plus file-backed persistent memory tools ([#19](https://github.com/kk7041/havliand_agent/issues/19)).
 
 ## [0.80.8] - 2026-07-23
