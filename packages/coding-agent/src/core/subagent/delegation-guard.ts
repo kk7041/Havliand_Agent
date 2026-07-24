@@ -27,7 +27,14 @@ export const DELEGATION_GUARD_ENV_FLAG = "HAVLIAND_DELEGATION_GUARD";
 /** Set to 1/true/on/yes in spawned child sessions. */
 export const SUBAGENT_PROCESS_ENV_FLAG = "HAVLIAND_IS_SUBAGENT";
 
+/** Current subagent nesting depth. Top-level orchestrator sessions have depth 0. */
+export const SUBAGENT_DEPTH_ENV_FLAG = "HAVLIAND_SUBAGENT_DEPTH";
+
+/** Maximum subagent nesting depth. Default 1 allows top-level -> subagent only. */
+export const MAX_SUBAGENT_DEPTH_ENV_FLAG = "HAVLIAND_MAX_SUBAGENT_DEPTH";
+
 export const DEFAULT_EXPLORATION_ALLOWANCE = 2;
+export const DEFAULT_MAX_SUBAGENT_DEPTH = 1;
 
 export function isDelegationGuardDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
 	const value = env[DELEGATION_GUARD_ENV_FLAG]?.trim().toLowerCase();
@@ -37,6 +44,25 @@ export function isDelegationGuardDisabledByEnv(env: NodeJS.ProcessEnv = process.
 export function isSubagentProcess(env: NodeJS.ProcessEnv = process.env): boolean {
 	const value = env[SUBAGENT_PROCESS_ENV_FLAG]?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "on" || value === "yes";
+}
+
+function nonNegativeIntegerEnvValue(value: string | undefined, fallback: number): number {
+	if (value === undefined) return fallback;
+	const parsed = Number(value.trim());
+	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+	return Math.floor(parsed);
+}
+
+export function getSubagentDepth(env: NodeJS.ProcessEnv = process.env): number {
+	return nonNegativeIntegerEnvValue(env[SUBAGENT_DEPTH_ENV_FLAG], 0);
+}
+
+export function getMaxSubagentDepth(env: NodeJS.ProcessEnv = process.env): number {
+	return nonNegativeIntegerEnvValue(env[MAX_SUBAGENT_DEPTH_ENV_FLAG], DEFAULT_MAX_SUBAGENT_DEPTH);
+}
+
+export function canSpawnSubagent(env: NodeJS.ProcessEnv = process.env): boolean {
+	return getSubagentDepth(env) < getMaxSubagentDepth(env);
 }
 
 export function isDelegationGuardDisabledForProcess(env: NodeJS.ProcessEnv = process.env): boolean {

@@ -61,6 +61,15 @@ describe("built-in subagents", () => {
 		expect(agents.find((agent) => agent.name === "OG")?.model).toBeUndefined();
 		expect(agents.find((agent) => agent.name === "Angel")?.model).toBeUndefined();
 		expect(agents.find((agent) => agent.name === "OG")?.tools).toContain("websearch");
+		expect(agents.find((agent) => agent.name === "Angel")?.tools).toEqual([
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"bash",
+			"edit",
+			"write",
+		]);
 	});
 
 	it("lists built-in and user agents in the subagent tool description", () => {

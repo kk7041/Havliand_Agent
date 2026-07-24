@@ -73,6 +73,7 @@ Output format:
 	{
 		name: "Angel",
 		description: "Execution lead subagent that implements delegated work under havliand_agent direction",
+		tools: ["read", "grep", "find", "ls", "bash", "edit", "write"],
 		model: process.env.HAVLIAND_SUBAGENT_ANGEL_MODEL,
 		systemPrompt: `You are Angel, the execution lead subagent for havliand_agent.
 

@@ -27,7 +27,12 @@ import { getMarkdownTheme, type ThemeColor, theme } from "../../modes/interactiv
 import type { ExtensionAPI, ToolDefinition } from "../extensions/types.ts";
 import { withFileMutationQueue } from "../tools/file-mutation-queue.ts";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.ts";
-import { DELEGATION_GUARD_ENV_FLAG, SUBAGENT_PROCESS_ENV_FLAG } from "./delegation-guard.ts";
+import {
+	DELEGATION_GUARD_ENV_FLAG,
+	getSubagentDepth,
+	SUBAGENT_DEPTH_ENV_FLAG,
+	SUBAGENT_PROCESS_ENV_FLAG,
+} from "./delegation-guard.ts";
 
 export type { AgentConfig, AgentDiscoveryResult, AgentScope } from "./agents.ts";
 export { discoverAgents, formatAgentList, writeUserAgentModelOverride } from "./agents.ts";
@@ -450,12 +455,14 @@ async function runSingleAgent(
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
 			const timeoutMs = getSubagentTimeoutMs();
+			const childSubagentDepth = getSubagentDepth() + 1;
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				env: {
 					...process.env,
 					[DELEGATION_GUARD_ENV_FLAG]: "off",
 					[SUBAGENT_PROCESS_ENV_FLAG]: "1",
+					[SUBAGENT_DEPTH_ENV_FLAG]: childSubagentDepth.toString(),
 				},
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],

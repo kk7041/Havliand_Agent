@@ -8,18 +8,26 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { SUBAGENT_DEPTH_ENV_FLAG } from "../src/core/subagent/delegation-guard.ts";
 
 describe("AgentSession dynamic tool registration", () => {
 	let tempDir: string;
 	let agentDir: string;
+	let previousSubagentDepth: string | undefined;
 
 	beforeEach(() => {
 		tempDir = join(tmpdir(), `pi-dynamic-tool-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
+		previousSubagentDepth = process.env[SUBAGENT_DEPTH_ENV_FLAG];
 	});
 
 	afterEach(() => {
+		if (previousSubagentDepth === undefined) {
+			delete process.env[SUBAGENT_DEPTH_ENV_FLAG];
+		} else {
+			process.env[SUBAGENT_DEPTH_ENV_FLAG] = previousSubagentDepth;
+		}
 		if (tempDir && existsSync(tempDir)) {
 			rmSync(tempDir, { recursive: true, force: true });
 		}
@@ -179,6 +187,34 @@ describe("AgentSession dynamic tool registration", () => {
 		expect(session.getActiveToolNames()).toContain("hidden_tool");
 		expect(session.systemPrompt).not.toContain("hidden_tool");
 		expect(session.systemPrompt).not.toContain("Description should not appear in available tools");
+
+		session.dispose();
+	});
+
+	it("omits the subagent tool when the subagent depth cap is reached", async () => {
+		process.env[SUBAGENT_DEPTH_ENV_FLAG] = "1";
+
+		const settingsManager = SettingsManager.create(tempDir, agentDir);
+		const sessionManager = SessionManager.inMemory();
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: tempDir,
+			agentDir,
+			settingsManager,
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: tempDir,
+			agentDir,
+			model: getModel("anthropic", "claude-sonnet-4-5")!,
+			settingsManager,
+			sessionManager,
+			resourceLoader,
+		});
+
+		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("subagent");
+		expect(session.getActiveToolNames()).not.toContain("subagent");
+		expect(session.systemPrompt).not.toContain("Delegating to subagents");
 
 		session.dispose();
 	});

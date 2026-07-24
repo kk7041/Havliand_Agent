@@ -1,11 +1,17 @@
 import { describe, expect, test } from "vitest";
 import {
+	canSpawnSubagent,
 	DEFAULT_EXPLORATION_ALLOWANCE,
+	DEFAULT_MAX_SUBAGENT_DEPTH,
 	DelegationGuard,
+	getMaxSubagentDepth,
+	getSubagentDepth,
 	isDelegationGuardDisabledByEnv,
 	isDelegationGuardDisabledForProcess,
 	isExplorationCall,
 	isSubagentProcess,
+	MAX_SUBAGENT_DEPTH_ENV_FLAG,
+	SUBAGENT_DEPTH_ENV_FLAG,
 } from "../src/core/subagent/delegation-guard.ts";
 
 describe("DelegationGuard", () => {
@@ -103,5 +109,39 @@ describe("isDelegationGuardDisabledForProcess", () => {
 				HAVLIAND_IS_SUBAGENT: "1",
 			}),
 		).toBe(true);
+	});
+});
+
+describe("subagent depth", () => {
+	test("defaults to top-level depth with a single subagent layer allowed", () => {
+		expect(getSubagentDepth({})).toBe(0);
+		expect(getMaxSubagentDepth({})).toBe(DEFAULT_MAX_SUBAGENT_DEPTH);
+		expect(canSpawnSubagent({})).toBe(true);
+	});
+
+	test("blocks spawning when depth reaches the configured maximum", () => {
+		expect(
+			canSpawnSubagent({
+				[SUBAGENT_DEPTH_ENV_FLAG]: "1",
+			}),
+		).toBe(false);
+		expect(
+			canSpawnSubagent({
+				[SUBAGENT_DEPTH_ENV_FLAG]: "1",
+				[MAX_SUBAGENT_DEPTH_ENV_FLAG]: "2",
+			}),
+		).toBe(true);
+		expect(
+			canSpawnSubagent({
+				[SUBAGENT_DEPTH_ENV_FLAG]: "2",
+				[MAX_SUBAGENT_DEPTH_ENV_FLAG]: "2",
+			}),
+		).toBe(false);
+	});
+
+	test("falls back for invalid depth values", () => {
+		expect(getSubagentDepth({ [SUBAGENT_DEPTH_ENV_FLAG]: "invalid" })).toBe(0);
+		expect(getSubagentDepth({ [SUBAGENT_DEPTH_ENV_FLAG]: "-1" })).toBe(0);
+		expect(getMaxSubagentDepth({ [MAX_SUBAGENT_DEPTH_ENV_FLAG]: "invalid" })).toBe(DEFAULT_MAX_SUBAGENT_DEPTH);
 	});
 });
