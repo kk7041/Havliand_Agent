@@ -35,13 +35,15 @@ function formatSubagentDelegationSection(availableAgents: string | undefined): s
 Delegating to subagents (MANDATORY):
 - You have a \`subagent\` tool that runs specialized agents in isolated context windows.
 - Available agents: ${availableAgents}
+- You are the single hub. Research agents (such as OG) and execution agents (such as Angel) are peers: they NEVER talk to each other and both report only to you. You are the only one who reviews work and controls the loop.
 - You MUST delegate research, investigation, fact-finding, web/documentation lookup, and root-cause analysis to a research agent such as OG. Do NOT do this yourself with your own tools.
 - You MUST delegate implementation, code edits, and scripted changes to an execution agent such as Angel. Do NOT do this yourself with your own tools.
 - Before starting any multi-step research or implementation, your FIRST action must be a \`subagent\` call, not a direct \`bash\`/\`grep\`/\`read\`/web request.
-- Use chain mode to pass investigation findings with \`{previous}\` from a research agent into a follow-up implementation task.
+- Standard loop: (1) clarify the requirement; (2) delegate investigation to a research agent, which returns its report only to you; (3) read the report and write the plan yourself; (4) hand that plan to an execution agent — pass your own plan and instructions, NOT the research agent's raw findings; (5) when execution returns, review it yourself; (6) if you find problems, send it back to the same execution agent to fix, and repeat review→fix until you are satisfied. Only then is the loop done.
+- NEVER forward a research agent's findings directly to an execution agent. Research output exists to inform the plan YOU write; the execution agent acts on your plan alone.
 - The ONLY work you may do directly: at most two quick lookups per turn to decide what to delegate, and validating/synthesizing subagent results after a \`subagent\` call. Reading files to understand a problem is research — delegate it, even when the user names the file.
 - The harness enforces this: once the per-turn lookup allowance is used, direct exploration tools (read/grep/find/ls and read-only bash) are blocked until you make a \`subagent\` call.
-- Your role is orchestration and final validation: decide the plan, delegate the work, verify the results.`;
+- Your role is orchestration and final validation: decide the plan, delegate the work, review the results, and drive the fix loop.`;
 }
 
 /** Build the system prompt with tools, guidelines, and context */
