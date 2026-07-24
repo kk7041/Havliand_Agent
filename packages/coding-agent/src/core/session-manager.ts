@@ -19,6 +19,7 @@ import { createInterface } from "readline";
 import { StringDecoder } from "string_decoder";
 import { getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
+import { mirrorSessionEntryToPostgresBestEffort } from "./chat-storage.ts";
 import {
 	type BashExecutionMessage,
 	type CustomMessage,
@@ -977,6 +978,11 @@ export class SessionManager {
 		this.byId.set(entry.id, entry);
 		this.leafId = entry.id;
 		this._persist(entry);
+		mirrorSessionEntryToPostgresBestEffort({
+			header: this.getHeader(),
+			sessionFile: this.sessionFile,
+			entry,
+		});
 	}
 
 	/** Append a message as child of current leaf, then advance leaf. Returns entry id.

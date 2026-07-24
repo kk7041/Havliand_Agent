@@ -10,6 +10,7 @@ export {
 	createBashToolDefinition,
 	createLocalBashOperations,
 } from "./bash.ts";
+export { type ChatSearchToolDetails, createChatSearchToolDefinition } from "./chat-search.ts";
 export {
 	createEditTool,
 	createEditToolDefinition,
@@ -43,6 +44,17 @@ export {
 	type LsToolInput,
 	type LsToolOptions,
 } from "./ls.ts";
+export {
+	createMemoryDeleteToolDefinition,
+	createMemoryReadToolDefinition,
+	createMemorySearchToolDefinition,
+	createMemoryWriteToolDefinition,
+	type MemoryDeleteInput,
+	type MemoryReadInput,
+	type MemorySearchInput,
+	type MemoryToolDetails,
+	type MemoryWriteInput,
+} from "./memory.ts";
 export {
 	createReadTool,
 	createReadToolDefinition,
@@ -90,10 +102,17 @@ export {
 import type { AgentTool } from "@havliand_agent/agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
+import { createChatSearchToolDefinition } from "./chat-search.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
+import {
+	createMemoryDeleteToolDefinition,
+	createMemoryReadToolDefinition,
+	createMemorySearchToolDefinition,
+	createMemoryWriteToolDefinition,
+} from "./memory.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
 import {
 	createTaskCreateToolDefinition,
@@ -121,7 +140,12 @@ export type ToolName =
 	| "task_list"
 	| "task_get"
 	| "task_update"
-	| "task_stop";
+	| "task_stop"
+	| "chat_search"
+	| "memory_write"
+	| "memory_search"
+	| "memory_read"
+	| "memory_delete";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -136,6 +160,11 @@ export const allToolNames: Set<ToolName> = new Set([
 	"task_get",
 	"task_update",
 	"task_stop",
+	"chat_search",
+	"memory_write",
+	"memory_search",
+	"memory_read",
+	"memory_delete",
 ]);
 
 export interface ToolsOptions {
@@ -176,6 +205,16 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createTaskUpdateToolDefinition(cwd);
 		case "task_stop":
 			return createTaskStopToolDefinition(cwd);
+		case "chat_search":
+			return createChatSearchToolDefinition(cwd);
+		case "memory_write":
+			return createMemoryWriteToolDefinition(cwd);
+		case "memory_search":
+			return createMemorySearchToolDefinition(cwd);
+		case "memory_read":
+			return createMemoryReadToolDefinition(cwd);
+		case "memory_delete":
+			return createMemoryDeleteToolDefinition(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -209,6 +248,16 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return wrapToolDefinition(createTaskUpdateToolDefinition(cwd));
 		case "task_stop":
 			return wrapToolDefinition(createTaskStopToolDefinition(cwd));
+		case "chat_search":
+			return wrapToolDefinition(createChatSearchToolDefinition(cwd));
+		case "memory_write":
+			return wrapToolDefinition(createMemoryWriteToolDefinition(cwd));
+		case "memory_search":
+			return wrapToolDefinition(createMemorySearchToolDefinition(cwd));
+		case "memory_read":
+			return wrapToolDefinition(createMemoryReadToolDefinition(cwd));
+		case "memory_delete":
+			return wrapToolDefinition(createMemoryDeleteToolDefinition(cwd));
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -247,6 +296,11 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		task_get: createTaskGetToolDefinition(cwd),
 		task_update: createTaskUpdateToolDefinition(cwd),
 		task_stop: createTaskStopToolDefinition(cwd),
+		chat_search: createChatSearchToolDefinition(cwd),
+		memory_write: createMemoryWriteToolDefinition(cwd),
+		memory_search: createMemorySearchToolDefinition(cwd),
+		memory_read: createMemoryReadToolDefinition(cwd),
+		memory_delete: createMemoryDeleteToolDefinition(cwd),
 	};
 }
 
@@ -283,5 +337,10 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		task_get: wrapToolDefinition(createTaskGetToolDefinition(cwd)),
 		task_update: wrapToolDefinition(createTaskUpdateToolDefinition(cwd)),
 		task_stop: wrapToolDefinition(createTaskStopToolDefinition(cwd)),
+		chat_search: wrapToolDefinition(createChatSearchToolDefinition(cwd)),
+		memory_write: wrapToolDefinition(createMemoryWriteToolDefinition(cwd)),
+		memory_search: wrapToolDefinition(createMemorySearchToolDefinition(cwd)),
+		memory_read: wrapToolDefinition(createMemoryReadToolDefinition(cwd)),
+		memory_delete: wrapToolDefinition(createMemoryDeleteToolDefinition(cwd)),
 	};
 }
